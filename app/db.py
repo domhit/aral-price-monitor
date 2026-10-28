@@ -25,6 +25,7 @@ def init_db():
  migrate_v03()
  migrate_v04()
  migrate_v041_full()
+ migrate_v042()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -79,3 +80,26 @@ def migrate_v041_full():
         for vehicle,prov,ext in [('Audi RS3','aral','F00125'),('Audi S3','aral','F00114'),('Golf GTI','tankerkoenig','e10')]:
             c.execute('''INSERT OR IGNORE INTO vehicle_price_profiles(vehicle_id,provider_id,provider_fuel_id,enabled) SELECT v.id,p.id,pf.id,1 FROM vehicles v,price_providers p,provider_fuels pf WHERE v.name=? AND p.slug=? AND pf.provider_id=p.id AND pf.external_id=?''',(vehicle,prov,ext))
         c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.4.1')")
+
+def migrate_v042():
+    with connect() as c:
+        c.execute('''CREATE TABLE IF NOT EXISTS vehicle_costs(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vehicle_id INTEGER NOT NULL,
+          cost_date TEXT NOT NULL,
+          odometer REAL,
+          distance_km REAL,
+          cost_type_code INTEGER NOT NULL,
+          total_cost REAL NOT NULL,
+          currency TEXT NOT NULL DEFAULT 'EUR',
+          note TEXT NOT NULL DEFAULT '',
+          recurrence_months INTEGER NOT NULL DEFAULT 0,
+          source TEXT NOT NULL DEFAULT 'manual',
+          external_id TEXT,
+          import_key TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT,
+          FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+        )''')
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicle_costs_import_key ON vehicle_costs(import_key) WHERE import_key IS NOT NULL')
+        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.4.2')")

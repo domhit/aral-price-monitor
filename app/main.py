@@ -148,3 +148,41 @@ def import_confirm(vehicle_id:int=Form(...),token:str=Form(...)):
  try:i,d,e=import_csv(vehicle_id,decode_token(token))
  except Exception as ex:return RedirectResponse('/refuels?import_error='+str(ex).replace(' ','+'),303)
  return RedirectResponse(f'/refuels?imported={i}&duplicates={d}&errors={e}',303)
+
+@app.get('/costs',response_class=HTMLResponse)
+def costs_page(request:Request,edit:int|None=None):
+ from .spritmonitor_costs import COST_TYPES
+ vehicles=rows('SELECT * FROM vehicles ORDER BY name')
+ costs=rows('''SELECT c.*,v.name vehicle_name FROM vehicle_costs c JOIN vehicles v ON v.id=c.vehicle_id ORDER BY c.cost_date DESC,c.id DESC LIMIT 250''')
+ editing=(rows('SELECT * FROM vehicle_costs WHERE id=?',(edit,)) or [None])[0] if edit else None
+ summary=rows('''SELECT v.name vehicle_name,COUNT(c.id) entries,COALESCE(SUM(c.total_cost),0) total FROM vehicles v LEFT JOIN vehicle_costs c ON c.vehicle_id=v.id GROUP BY v.id ORDER BY v.name''')
+ return tpl.TemplateResponse('costs.html',{'request':request,'vehicles':vehicles,'costs':costs,'editing':editing,'types':COST_TYPES,'summary':summary,**common()})
+
+@app.post('/costs/save')
+def costs_save(id:str=Form(''),vehicle_id:int=Form(...),cost_date:str=Form(...),odometer:str=Form(''),distance_km:str=Form(''),cost_type_code:int=Form(...),total_cost:float=Form(...),currency:str=Form('EUR'),note:str=Form(''),recurrence_months:int=Form(0)):
+ vals=(vehicle_id,cost_date,float(odometer) if odometer.strip() else None,float(distance_km) if distance_km.strip() else None,cost_type_code,total_cost,currency.strip() or 'EUR',note.strip(),max(0,recurrence_months))
+ with connect() as c:
+  if id:c.execute('''UPDATE vehicle_costs SET vehicle_id=?,cost_date=?,odometer=?,distance_km=?,cost_type_code=?,total_cost=?,currency=?,note=?,recurrence_months=?,updated_at=CURRENT_TIMESTAMP WHERE id=?''',(*vals,int(id)))
+  else:c.execute('''INSERT INTO vehicle_costs(vehicle_id,cost_date,odometer,distance_km,cost_type_code,total_cost,currency,note,recurrence_months,source) VALUES(?,?,?,?,?,?,?,?,?,'manual')''',vals)
+ return RedirectResponse('/costs',303)
+
+@app.post('/costs/{id}/delete')
+def costs_delete(id:int):
+ with connect() as c:c.execute('DELETE FROM vehicle_costs WHERE id=?',(id,))
+ return RedirectResponse('/costs',303)
+
+@app.post('/costs/import/preview',response_class=HTMLResponse)
+async def costs_import_preview(request:Request,vehicle_id:int=Form(...),file:UploadFile=File(...)):
+ from .spritmonitor_costs import parse,encode
+ raw=await file.read()
+ try:data=parse(raw)
+ except Exception as e:return RedirectResponse('/costs?import_error='+str(e).replace(' ','+'),303)
+ vehicle=(rows('SELECT * FROM vehicles WHERE id=?',(vehicle_id,)) or [None])[0]
+ return tpl.TemplateResponse('costs_import_preview.html',{'request':request,'data':data,'vehicle':vehicle,'token':encode(raw),**common()})
+
+@app.post('/costs/import/confirm')
+def costs_import_confirm(vehicle_id:int=Form(...),token:str=Form(...)):
+ from .spritmonitor_costs import import_csv,decode_token
+ try:i,d,e=import_csv(vehicle_id,decode_token(token))
+ except Exception as ex:return RedirectResponse('/costs?import_error='+str(ex).replace(' ','+'),303)
+ return RedirectResponse(f'/costs?imported={i}&duplicates={d}&errors={e}',303)
