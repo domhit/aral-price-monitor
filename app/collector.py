@@ -30,6 +30,12 @@ async def collect_once():
     publish_station(t,{"slug":t['slug'],"name":t['fuel_name'],"aral_fuel_id":t['aral_fuel_id']},price,changed,retrieved);ok+=1
    except Exception as e:err+=1;msgs.append(f"{t['name']}/{t['fuel_name']}: {e}")
  with connect() as c:c.execute("UPDATE collector_runs SET finished_at=?,ok_count=?,error_count=?,message=? WHERE id=?",(datetime.now(timezone.utc).isoformat(),ok,err," | ".join(msgs),rid))
+ 
+ try:
+  from .analytics import all_recommendations
+  from .mqtt import publish_recommendation
+  for rec in all_recommendations(): publish_recommendation(rec)
+ except Exception as e: msgs.append(f"Analytics/MQTT: {e}")
  return {"ok":ok,"errors":err,"messages":msgs}
 async def collector_loop(stop):
  while not stop.is_set():

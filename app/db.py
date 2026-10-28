@@ -22,6 +22,7 @@ def rows(q,p=()):
  with connect() as c:return [dict(x) for x in c.execute(q,p).fetchall()]
 def init_db():
  with connect() as c:c.executescript(SCHEMA);seed(c)
+ migrate_v03()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -32,3 +33,12 @@ def seed(c):
   c.execute("INSERT OR IGNORE INTO station_fuels(station_id,fuel_id,active) SELECT s.id,f.id,1 FROM stations s,fuels f WHERE s.aral_station_id=? AND f.aral_fuel_id=?",(sid,f))
  for n,f,co,ss,se in [("Audi RS3","F00125",11.7,"04-01","10-31"),("Audi S3","F00114",10.1,"11-01","03-31")]:
   if not c.execute("SELECT 1 FROM vehicles WHERE name=?",(n,)).fetchone():c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active) SELECT ?,id,?,NULL,?,?,1 FROM fuels WHERE aral_fuel_id=?",(n,co,ss,se,f))
+
+def migrate_v03():
+    with connect() as c:
+        cols={r['name'] for r in c.execute('PRAGMA table_info(stations)').fetchall()}
+        if 'distance_km' not in cols:c.execute('ALTER TABLE stations ADD COLUMN distance_km REAL')
+        if 'extra_distance_km' not in cols:c.execute('ALTER TABLE stations ADD COLUMN extra_distance_km REAL NOT NULL DEFAULT 0')
+        c.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+        defaults={'analysis_days':'30','max_remaining_ct':'1.0','okay_remaining_ct':'2.0'}
+        for k,v in defaults.items():c.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)',(k,v))
