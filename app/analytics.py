@@ -55,6 +55,8 @@ def active_in_season(v,day=None):
     return (a<=md<=b) if a<=b else (md>=a or md<=b)
 
 def recommendation_for_fuel(slug,days=30):
+    from .admin import get_settings
+    cfg=get_settings(); days=int(cfg.get("analysis_days",days))
     base=history_payload(slug,days)
     if not base:return None
     fuel=base['fuel']; states=rows('''SELECT s.id,s.name,s.aral_station_id,s.extra_distance_km,ss.price,ss.price_changed_at
@@ -73,10 +75,10 @@ def recommendation_for_fuel(slug,days=30):
         fill_cost=s['price']*tank; econ.append({**s,'trip_cost':round(trip_cost,2),'effective_cost':round(fill_cost+trip_cost,2)})
     economic=min(econ,key=lambda x:x['effective_cost'])
     ct=remaining*100
-    if base['data_days']<7:level,label='learning','Daten sammeln'
-    elif ct<=1.0:level,label='good','Jetzt tanken'
-    elif ct<=2.0:level,label='okay','Tanken okay'
-    elif ct<=4.0:level,label='wait','Eher warten'
+    if base['data_days']<int(cfg.get('min_days',7)):level,label='learning','Daten sammeln'
+    elif ct<=float(cfg.get('now_threshold_ct',1.0)):level,label='good','Jetzt tanken'
+    elif ct<=float(cfg.get('okay_threshold_ct',2.0)):level,label='okay','Tanken okay'
+    elif ct<=float(cfg.get('wait_threshold_ct',4.0)):level,label='wait','Eher warten'
     else:level,label='bad','Warten lohnt sich wahrscheinlich'
     # best median window: points within 0.5 ct/l of profile minimum
     med=base['median']; low=min((p['y'] for p in med),default=None); good=[p['x'] for p in med if low is not None and p['y']<=low+.005]

@@ -82,3 +82,48 @@ def delete_vehicle(id:int):
 async def collect():await collect_once();return RedirectResponse("/",303)
 @app.get("/health")
 def health():return {"status":"ok","version":VERSION,"last_run":(rows("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1") or [None])[0]}
+
+@app.get('/settings',response_class=HTMLResponse)
+def settings_page(request:Request):
+    from .admin import get_settings,db_stats
+    settings=get_settings(); stats=db_stats(); last=(rows('SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1') or [None])[0]
+    return tpl.TemplateResponse('settings.html',{'request':request,'settings':settings,'stats':stats,'last':last,**common()})
+
+@app.post('/settings')
+def settings_save(analysis_days:int=Form(...),now_threshold_ct:float=Form(...),okay_threshold_ct:float=Form(...),wait_threshold_ct:float=Form(...),min_days:int=Form(...)):
+    from .admin import save_settings
+    save_settings({'analysis_days':max(7,min(90,analysis_days)),'now_threshold_ct':now_threshold_ct,'okay_threshold_ct':okay_threshold_ct,'wait_threshold_ct':wait_threshold_ct,'min_days':max(1,min(30,min_days))});return RedirectResponse('/settings?saved=1',303)
+
+@app.get('/backup/database')
+def backup_database():
+    from .admin import make_backup
+    from fastapi.responses import FileResponse
+    stamp=datetime.now().strftime('%Y-%m-%d_%H%M%S');path=f'/tmp/aral-price-monitor-backup-{stamp}.db';make_backup(path);return FileResponse(path,media_type='application/vnd.sqlite3',filename=f'aral-price-monitor-backup-{stamp}.db')
+
+@app.get('/backup/config')
+def backup_config():
+    from .admin import export_config
+    from fastapi.responses import Response
+    return Response(export_config(),media_type='application/x-yaml',headers={'Content-Disposition':'attachment; filename="aral-price-monitor-config.yaml"'})
+
+@app.get('/export/history.csv')
+def export_history(days:int=30,fuel_id:int|None=None,station_id:int|None=None):
+    from .admin import csv_history
+    from fastapi.responses import Response
+    return Response(csv_history(days,fuel_id,station_id),media_type='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename="aral-price-history.csv"'})
+
+@app.post('/database/vacuum')
+def vacuum_database():
+    import sqlite3
+    from .config import DB_PATH
+    c=sqlite3.connect(DB_PATH);c.execute('VACUUM');c.close();return RedirectResponse('/settings?vacuum=1',303)
+
+@app.get('/refuels',response_class=HTMLResponse)
+def refuels_page(request:Request):
+    vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name');history=rows("SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY r.refueled_at DESC LIMIT 100")
+    return tpl.TemplateResponse('refuels.html',{'request':request,'vehicles':vehicles,'stations':stations,'history':history,**common()})
+
+@app.post('/refuels')
+def refuel_save(vehicle_id:int=Form(...),station_id:int=Form(...),liters:float=Form(...),price:float=Form(...),refueled_at:str=Form(...),odometer:str=Form('')):
+    from .admin import add_refuel
+    add_refuel(vehicle_id,station_id,liters,price,refueled_at,float(odometer) if odometer.strip() else None);return RedirectResponse('/refuels',303)

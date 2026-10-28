@@ -23,6 +23,7 @@ def rows(q,p=()):
 def init_db():
  with connect() as c:c.executescript(SCHEMA);seed(c)
  migrate_v03()
+ migrate_v04()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -42,3 +43,8 @@ def migrate_v03():
         c.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
         defaults={'analysis_days':'30','max_remaining_ct':'1.0','okay_remaining_ct':'2.0'}
         for k,v in defaults.items():c.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)',(k,v))
+
+def migrate_v04():
+    with connect() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+        c.execute('''CREATE TABLE IF NOT EXISTS refuels(id INTEGER PRIMARY KEY AUTOINCREMENT,vehicle_id INTEGER NOT NULL,station_id INTEGER,liters REAL NOT NULL,price REAL NOT NULL,total REAL NOT NULL,refueled_at TEXT NOT NULL,odometer REAL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,FOREIGN KEY(station_id) REFERENCES stations(id) ON DELETE SET NULL)''')
