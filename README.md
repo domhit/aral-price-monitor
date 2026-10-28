@@ -1,42 +1,37 @@
-# Aral Price Monitor v0.3.0
+# Aral Price Monitor v0.4.1
 
-V0.3 turns the collector into a refuelling decision assistant. Existing V0.2 SQLite databases are migrated automatically. Keep the same `/data` volume.
+Patch release based on V0.4.0.
 
-## New in V0.3
+## Changes
 
-- Analysis page with recommendation per fuel
-- Expected remaining daily low from the 15-minute historical median
-- Remaining saving in ct/L and EUR per tank
-- Data maturity/confidence indicator
-- Typical low-price window
-- Automatic seasonal vehicle selection
-- Economic station calculation using vehicle consumption and configurable extra round-trip km
-- Extra-round-trip field in station editor
-- MQTT Discovery sensors for refuel recommendation and best current price
-- Existing V0.2 charts, exact `last_price_update` history and CRUD remain intact
+- Fixed duplicate `Tankungen` and `Einstellungen` navigation entries.
+- Added Spritmonitor CSV import with vehicle assignment and preview.
+- Automatic delimiter and encoding detection (`;`, `,`, tab; UTF-8/Windows-1252).
+- Flexible German and English column aliases.
+- Imports date, odometer, liters, price or total cost, full/partial tank, station, note and external ID when present.
+- Derives price from total/liters or total from price/liters when one value is missing.
+- Adds source and external import ID to the local tank log.
+- Duplicate-safe repeated imports using Spritmonitor ID or a deterministic fingerprint.
+- Existing V0.4 database and all price history remain intact.
 
-## Important
+## Upgrade
 
-The Aral API exposes current prices and the latest change time, not historical backfill. Recommendations therefore begin in `Daten sammeln` mode until at least seven days have been observed. 30 days gives the full configured analysis window.
-
-If vehicle tank capacity is empty, analysis temporarily assumes a 50 L fill. Add the real tank capacity in the Vehicles page for EUR savings estimates.
-
-`extra_distance_km` means additional round-trip distance compared with the normal route. Set 0 when a station is already on the route.
-
-## Update from V0.2
-
-1. Push all files to the existing GitHub repository.
-2. Wait for GHCR `latest` to build.
-3. In Portainer pull latest image and update the existing stack.
-4. Do not delete `/volume1/docker/aral-price-monitor/data`.
-5. Open `/analysis` after deployment.
-
-## Release
+Push the files to the existing repository, wait for GHCR, then pull/redeploy `latest` in Portainer. Keep the existing `/data` volume.
 
 ```bash
 git add .
-git commit -m "feat: add refuel intelligence and economic station analysis"
+git commit -m "fix: deduplicate menu and add Spritmonitor CSV import"
 git push origin main
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
+
+## Import workflow
+
+1. Export the fuelings of one vehicle from Spritmonitor as CSV.
+2. Open `Tankungen`.
+3. Select the corresponding local vehicle and upload the CSV.
+4. Check the detected columns and preview.
+5. Confirm the import.
+
+The same CSV can be uploaded again safely. Existing import keys are skipped.

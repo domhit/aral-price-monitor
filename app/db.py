@@ -24,6 +24,7 @@ def init_db():
  with connect() as c:c.executescript(SCHEMA);seed(c)
  migrate_v03()
  migrate_v04()
+ migrate_v041()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -48,3 +49,15 @@ def migrate_v04():
     with connect() as c:
         c.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
         c.execute('''CREATE TABLE IF NOT EXISTS refuels(id INTEGER PRIMARY KEY AUTOINCREMENT,vehicle_id INTEGER NOT NULL,station_id INTEGER,liters REAL NOT NULL,price REAL NOT NULL,total REAL NOT NULL,refueled_at TEXT NOT NULL,odometer REAL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,FOREIGN KEY(station_id) REFERENCES stations(id) ON DELETE SET NULL)''')
+
+def migrate_v041():
+    with connect() as c:
+        cols={r['name'] for r in c.execute('PRAGMA table_info(refuels)').fetchall()}
+        additions={
+          'full_tank':'INTEGER NOT NULL DEFAULT 1','partial_tank':'INTEGER NOT NULL DEFAULT 0',
+          'note':"TEXT NOT NULL DEFAULT ''",'source':"TEXT NOT NULL DEFAULT 'manual'",
+          'external_id':'TEXT','import_key':'TEXT'
+        }
+        for name,sql in additions.items():
+            if name not in cols:c.execute(f'ALTER TABLE refuels ADD COLUMN {name} {sql}')
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_refuels_import_key ON refuels(import_key) WHERE import_key IS NOT NULL')

@@ -1,7 +1,7 @@
 import asyncio,re
 from contextlib import asynccontextmanager
 from datetime import datetime,timezone
-from fastapi import FastAPI,Request,Form,HTTPException
+from fastapi import FastAPI,Request,Form,HTTPException,UploadFile,File
 from fastapi.responses import HTMLResponse,RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -127,3 +127,21 @@ def refuels_page(request:Request):
 def refuel_save(vehicle_id:int=Form(...),station_id:int=Form(...),liters:float=Form(...),price:float=Form(...),refueled_at:str=Form(...),odometer:str=Form('')):
     from .admin import add_refuel
     add_refuel(vehicle_id,station_id,liters,price,refueled_at,float(odometer) if odometer.strip() else None);return RedirectResponse('/refuels',303)
+
+
+@app.post('/refuels/import/preview',response_class=HTMLResponse)
+async def spritmonitor_preview(request:Request,vehicle_id:int=Form(...),file:UploadFile=File(...)):
+    from .spritmonitor import preview,encode
+    raw=await file.read()
+    if len(raw)>10*1024*1024:return RedirectResponse('/refuels?import_error=CSV+ist+groesser+als+10+MB',303)
+    try:data=preview(raw)
+    except Exception as e:return RedirectResponse('/refuels?import_error='+str(e).replace(' ','+'),303)
+    vehicle=(rows('SELECT * FROM vehicles WHERE id=?',(vehicle_id,)) or [None])[0]
+    return tpl.TemplateResponse('import_preview.html',{'request':request,'vehicle':vehicle,'data':data,'token':encode(raw),**common()})
+
+@app.post('/refuels/import/confirm')
+def spritmonitor_confirm(vehicle_id:int=Form(...),token:str=Form(...)):
+    from .spritmonitor import decode_token,import_items
+    try:inserted,duplicates,errors=import_items(vehicle_id,decode_token(token))
+    except Exception as e:return RedirectResponse('/refuels?import_error='+str(e).replace(' ','+'),303)
+    return RedirectResponse(f'/refuels?imported={inserted}&duplicates={duplicates}&errors={errors}',303)
