@@ -3,5 +3,3 @@ __pycache__/
 .env
 data/
 *.db
-.idea/
-.vscode/

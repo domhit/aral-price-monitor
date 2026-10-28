@@ -1,8 +1,6 @@
 __pycache__/
 *.py[cod]
 *.db
-*.sqlite*
 .env
 .git/
-.github/
 data/
