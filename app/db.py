@@ -24,7 +24,7 @@ def init_db():
  with connect() as c:c.executescript(SCHEMA);seed(c)
  migrate_v03()
  migrate_v04()
- migrate_v041()
+ migrate_v041_full()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -50,14 +50,32 @@ def migrate_v04():
         c.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
         c.execute('''CREATE TABLE IF NOT EXISTS refuels(id INTEGER PRIMARY KEY AUTOINCREMENT,vehicle_id INTEGER NOT NULL,station_id INTEGER,liters REAL NOT NULL,price REAL NOT NULL,total REAL NOT NULL,refueled_at TEXT NOT NULL,odometer REAL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,FOREIGN KEY(station_id) REFERENCES stations(id) ON DELETE SET NULL)''')
 
-def migrate_v041():
+def migrate_v041_full():
     with connect() as c:
-        cols={r['name'] for r in c.execute('PRAGMA table_info(refuels)').fetchall()}
-        additions={
-          'full_tank':'INTEGER NOT NULL DEFAULT 1','partial_tank':'INTEGER NOT NULL DEFAULT 0',
-          'note':"TEXT NOT NULL DEFAULT ''",'source':"TEXT NOT NULL DEFAULT 'manual'",
-          'external_id':'TEXT','import_key':'TEXT'
-        }
+        c.execute('CREATE TABLE IF NOT EXISTS schema_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+        c.execute('''CREATE TABLE IF NOT EXISTS price_providers(id INTEGER PRIMARY KEY AUTOINCREMENT,slug TEXT NOT NULL UNIQUE,name TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS fuel_types(id INTEGER PRIMARY KEY AUTOINCREMENT,slug TEXT NOT NULL UNIQUE,name TEXT NOT NULL,spritmonitor_code INTEGER UNIQUE,active INTEGER NOT NULL DEFAULT 1)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS provider_fuels(id INTEGER PRIMARY KEY AUTOINCREMENT,provider_id INTEGER NOT NULL,fuel_type_id INTEGER NOT NULL,external_id TEXT NOT NULL,name TEXT NOT NULL,UNIQUE(provider_id,external_id),FOREIGN KEY(provider_id) REFERENCES price_providers(id),FOREIGN KEY(fuel_type_id) REFERENCES fuel_types(id))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS vehicle_price_profiles(id INTEGER PRIMARY KEY AUTOINCREMENT,vehicle_id INTEGER NOT NULL,provider_id INTEGER,provider_fuel_id INTEGER,enabled INTEGER NOT NULL DEFAULT 1,valid_from TEXT,valid_to TEXT,UNIQUE(vehicle_id,provider_id,provider_fuel_id),FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,FOREIGN KEY(provider_id) REFERENCES price_providers(id),FOREIGN KEY(provider_fuel_id) REFERENCES provider_fuels(id))''')
+        c.executemany('INSERT OR IGNORE INTO price_providers(slug,name,enabled) VALUES(?,?,?)',[('aral','Aral API',1),('tankerkoenig','Tankerkönig / MTS-K',0),('none','Keine Preisquelle',1)])
+        fuels=[('diesel','Diesel',1),('super','Super',7),('superplus','SuperPlus',8),('e10','Super E10',20),('premium_100_plus','Premium Benzin 100+',22)]
+        c.executemany('INSERT OR IGNORE INTO fuel_types(slug,name,spritmonitor_code) VALUES(?,?,?)',fuels)
+        pf=[('aral','premium_100_plus','F00125','Aral Ultimate 102'),('aral','superplus','F00114','Aral SuperPlus'),('tankerkoenig','e10','e10','Super E10')]
+        for prov,fuel,ext,name in pf:
+            c.execute('''INSERT OR IGNORE INTO provider_fuels(provider_id,fuel_type_id,external_id,name) SELECT p.id,f.id,?,? FROM price_providers p,fuel_types f WHERE p.slug=? AND f.slug=?''',(ext,name,prov,fuel))
+        # Extend vehicles without breaking old schema
+        vcols={r['name'] for r in c.execute('PRAGMA table_info(vehicles)')}
+        for name,sql in {'manufacturer':'TEXT','model':'TEXT','default_fuel_type_id':'INTEGER','updated_at':'TEXT'}.items():
+            if name not in vcols:c.execute(f'ALTER TABLE vehicles ADD COLUMN {name} {sql}')
+        # Extend existing refuels in-place
+        cols={r['name'] for r in c.execute('PRAGMA table_info(refuels)')}
+        additions={'trip_km':'REAL','price_per_liter':'REAL','total_cost':'REAL','currency':"TEXT DEFAULT 'EUR'",'tank_type':'INTEGER','tire_code':'INTEGER','route_code':'INTEGER','driving_style_code':'INTEGER','spritmonitor_fuel_code':'INTEGER','note':"TEXT NOT NULL DEFAULT ''",'reported_consumption':'REAL','bc_consumption':'REAL','bc_fuel_quantity':'REAL','bc_speed':'REAL','station_brand':'TEXT','country':'TEXT','region':'TEXT','location':'TEXT','latitude':'REAL','longitude':'REAL','source':"TEXT NOT NULL DEFAULT 'manual'",'external_id':'TEXT','import_key':'TEXT','updated_at':'TEXT'}
         for name,sql in additions.items():
             if name not in cols:c.execute(f'ALTER TABLE refuels ADD COLUMN {name} {sql}')
+        c.execute('UPDATE refuels SET price_per_liter=price WHERE price_per_liter IS NULL')
+        c.execute('UPDATE refuels SET total_cost=total WHERE total_cost IS NULL')
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_refuels_import_key ON refuels(import_key) WHERE import_key IS NOT NULL')
+        # Existing vehicle profile mappings
+        for vehicle,prov,ext in [('Audi RS3','aral','F00125'),('Audi S3','aral','F00114'),('Golf GTI','tankerkoenig','e10')]:
+            c.execute('''INSERT OR IGNORE INTO vehicle_price_profiles(vehicle_id,provider_id,provider_fuel_id,enabled) SELECT v.id,p.id,pf.id,1 FROM vehicles v,price_providers p,provider_fuels pf WHERE v.name=? AND p.slug=? AND pf.provider_id=p.id AND pf.external_id=?''',(vehicle,prov,ext))
+        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.4.1')")

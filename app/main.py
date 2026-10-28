@@ -65,14 +65,18 @@ def delete_station(id:int):
  return RedirectResponse("/stations",303)
 @app.get("/vehicles",response_class=HTMLResponse)
 def vehicles_page(request:Request,edit:int|None=None):
- vs=rows("SELECT v.*,f.name fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id ORDER BY v.name");fuels=rows("SELECT * FROM fuels ORDER BY name");editing=rows("SELECT * FROM vehicles WHERE id=?",(edit,))[0] if edit and rows("SELECT 1 FROM vehicles WHERE id=?",(edit,)) else None
- return tpl.TemplateResponse("vehicles.html",{"request":request,"vehicles":vs,"fuels":fuels,"editing":editing,**common()})
+ vs=rows("""SELECT v.*,f.name fuel_name,p.name provider_name,pf.name provider_fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id LEFT JOIN vehicle_price_profiles vp ON vp.vehicle_id=v.id AND vp.enabled=1 LEFT JOIN price_providers p ON p.id=vp.provider_id LEFT JOIN provider_fuels pf ON pf.id=vp.provider_fuel_id ORDER BY v.name""");fuels=rows("SELECT * FROM fuels ORDER BY name");profiles=rows("""SELECT pf.id,p.slug provider_slug,p.name provider_name,pf.name fuel_name,pf.external_id FROM provider_fuels pf JOIN price_providers p ON p.id=pf.provider_id ORDER BY p.name,pf.name""");editing=rows("""SELECT v.*,vp.provider_fuel_id selected_provider_fuel_id FROM vehicles v LEFT JOIN vehicle_price_profiles vp ON vp.vehicle_id=v.id AND vp.enabled=1 WHERE v.id=?""",(edit,))[0] if edit and rows("SELECT 1 FROM vehicles WHERE id=?",(edit,)) else None
+ return tpl.TemplateResponse("vehicles.html",{"request":request,"vehicles":vs,"fuels":fuels,"profiles":profiles,"editing":editing,**common()})
 @app.post("/vehicles/save")
-def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1")):
+def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1"),provider_fuel_id:str=Form("")):
  tank=float(tank_capacity) if tank_capacity.strip() else None;act=1 if active=="1" else 0
  with connect() as c:
   if id:c.execute("UPDATE vehicles SET name=?,fuel_id=?,consumption=?,tank_capacity=?,season_start=?,season_end=?,active=? WHERE id=?",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,int(id)))
-  else:c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active) VALUES(?,?,?,?,?,?,?)",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act))
+  else:
+   cur=c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active) VALUES(?,?,?,?,?,?,?)",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act));id=str(cur.lastrowid)
+  c.execute("UPDATE vehicle_price_profiles SET enabled=0 WHERE vehicle_id=?",(int(id),))
+  if provider_fuel_id:
+   c.execute("""INSERT INTO vehicle_price_profiles(vehicle_id,provider_id,provider_fuel_id,enabled) SELECT ?,provider_id,id,1 FROM provider_fuels WHERE id=? ON CONFLICT(vehicle_id,provider_id,provider_fuel_id) DO UPDATE SET enabled=1""",(int(id),int(provider_fuel_id)))
  return RedirectResponse("/vehicles",303)
 @app.post("/vehicles/{id}/delete")
 def delete_vehicle(id:int):
@@ -130,18 +134,17 @@ def refuel_save(vehicle_id:int=Form(...),station_id:int=Form(...),liters:float=F
 
 
 @app.post('/refuels/import/preview',response_class=HTMLResponse)
-async def spritmonitor_preview(request:Request,vehicle_id:int=Form(...),file:UploadFile=File(...)):
-    from .spritmonitor import preview,encode
-    raw=await file.read()
-    if len(raw)>10*1024*1024:return RedirectResponse('/refuels?import_error=CSV+ist+groesser+als+10+MB',303)
-    try:data=preview(raw)
-    except Exception as e:return RedirectResponse('/refuels?import_error='+str(e).replace(' ','+'),303)
-    vehicle=(rows('SELECT * FROM vehicles WHERE id=?',(vehicle_id,)) or [None])[0]
-    return tpl.TemplateResponse('import_preview.html',{'request':request,'vehicle':vehicle,'data':data,'token':encode(raw),**common()})
+async def import_preview(request:Request,vehicle_id:int=Form(...),file:UploadFile=File(...)):
+ from .spritmonitor import parse,encode
+ raw=await file.read()
+ try:data=parse(raw)
+ except Exception as e:return RedirectResponse('/refuels?import_error='+str(e).replace(' ','+'),303)
+ vehicle=(rows('SELECT * FROM vehicles WHERE id=?',(vehicle_id,)) or [None])[0]
+ return tpl.TemplateResponse('import_preview.html',{'request':request,'data':data,'vehicle':vehicle,'token':encode(raw),**common()})
 
 @app.post('/refuels/import/confirm')
-def spritmonitor_confirm(vehicle_id:int=Form(...),token:str=Form(...)):
-    from .spritmonitor import decode_token,import_items
-    try:inserted,duplicates,errors=import_items(vehicle_id,decode_token(token))
-    except Exception as e:return RedirectResponse('/refuels?import_error='+str(e).replace(' ','+'),303)
-    return RedirectResponse(f'/refuels?imported={inserted}&duplicates={duplicates}&errors={errors}',303)
+def import_confirm(vehicle_id:int=Form(...),token:str=Form(...)):
+ from .spritmonitor import import_csv,decode_token
+ try:i,d,e=import_csv(vehicle_id,decode_token(token))
+ except Exception as ex:return RedirectResponse('/refuels?import_error='+str(ex).replace(' ','+'),303)
+ return RedirectResponse(f'/refuels?imported={i}&duplicates={d}&errors={e}',303)

@@ -1,37 +1,28 @@
 # Aral Price Monitor v0.4.1
 
-Patch release based on V0.4.0.
+V0.4.1 makes the tank log independent from live price providers and adds a lossless Spritmonitor fueling CSV import.
 
-## Changes
+## Included
 
-- Fixed duplicate `Tankungen` and `Einstellungen` navigation entries.
-- Added Spritmonitor CSV import with vehicle assignment and preview.
-- Automatic delimiter and encoding detection (`;`, `,`, tab; UTF-8/Windows-1252).
-- Flexible German and English column aliases.
-- Imports date, odometer, liters, price or total cost, full/partial tank, station, note and external ID when present.
-- Derives price from total/liters or total from price/liters when one value is missing.
-- Adds source and external import ID to the local tank log.
-- Duplicate-safe repeated imports using Spritmonitor ID or a deterministic fingerprint.
-- Existing V0.4 database and all price history remain intact.
+- Fixed duplicate navigation entries.
+- Full import of the real Spritmonitor fueling export schema.
+- RS3, S3, Golf GTI and arbitrary additional vehicles can be imported independently.
+- Exact Spritmonitor fields: date, odometer, trip distance, quantity, total cost, currency, tank type 0–3, tires, route bit mask, driving style, fuel code, notes, consumption, BC values, brand, country, region, location and coordinates.
+- Liter price calculated from total cost / fuel quantity.
+- Preview and deterministic duplicate detection.
+- Generic provider model: Aral, Tankerkönig and no provider.
+- Vehicle editor supports Aral Ultimate 102, Aral SuperPlus, Tankerkönig E10 or no monitoring.
+- Tankerkönig is modeled but its live collector remains planned for V0.5.
+- Existing V0.4 database, price history and manual refuels are migrated in place.
 
 ## Upgrade
 
-Push the files to the existing repository, wait for GHCR, then pull/redeploy `latest` in Portainer. Keep the existing `/data` volume.
+Keep the existing `/data` volume. Push this project to GitHub, wait for GHCR, and redeploy `latest` in Portainer.
 
 ```bash
 git add .
-git commit -m "fix: deduplicate menu and add Spritmonitor CSV import"
+git commit -m "feat: add full Spritmonitor import and provider-independent vehicles"
 git push origin main
 git tag v0.4.1
 git push origin v0.4.1
 ```
-
-## Import workflow
-
-1. Export the fuelings of one vehicle from Spritmonitor as CSV.
-2. Open `Tankungen`.
-3. Select the corresponding local vehicle and upload the CSV.
-4. Check the detected columns and preview.
-5. Confirm the import.
-
-The same CSV can be uploaded again safely. Existing import keys are skipped.
