@@ -27,6 +27,7 @@ def init_db():
  migrate_v044()
  migrate_v054()
  migrate_v055()
+ migrate_v056()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -89,3 +90,12 @@ def migrate_v055():
         for name,sql in {'tank_name':'TEXT','tanks_json':'TEXT','history_complete':'INTEGER NOT NULL DEFAULT 0','remote_count':'INTEGER NOT NULL DEFAULT 0'}.items():
             if name not in mcols:c.execute(f'ALTER TABLE spritmonitor_vehicle_map ADD COLUMN {name} {sql}')
         c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.5.5')")
+
+def migrate_v056():
+    with connect() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS schema_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+        cols={r['name'] for r in c.execute('PRAGMA table_info(refuels)')}
+        for name,sql in {'remote_snapshot':'TEXT','delete_pending':'INTEGER NOT NULL DEFAULT 0'}.items():
+            if name not in cols:c.execute(f'ALTER TABLE refuels ADD COLUMN {name} {sql}')
+        c.execute('''CREATE TABLE IF NOT EXISTS sync_conflicts(id INTEGER PRIMARY KEY AUTOINCREMENT,refuel_id INTEGER NOT NULL,detected_at TEXT NOT NULL,local_json TEXT NOT NULL,remote_json TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',resolved_at TEXT,FOREIGN KEY(refuel_id) REFERENCES refuels(id) ON DELETE CASCADE)''')
+        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.5.6')")

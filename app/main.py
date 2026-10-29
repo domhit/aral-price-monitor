@@ -191,3 +191,50 @@ async def sync_push_one(refuel_id:int):
   with connect() as c:c.execute("UPDATE refuels SET sync_status='sync_error',sync_error=? WHERE id=?",(str(e),refuel_id))
   return RedirectResponse('/sync?error='+str(e).replace(' ','+'),303)
  return RedirectResponse('/sync?pushed=1',303)
+
+@app.get('/sync/diagnostics',response_class=HTMLResponse)
+def sync_diagnostics_page(request:Request):
+ from .spritmonitor_sync import sync_diagnostics
+ modified=rows("""SELECT r.*,v.name vehicle_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id WHERE r.sync_status='modified' ORDER BY r.refueled_at DESC""")
+ conflicts=rows("""SELECT sc.*,r.vehicle_id,r.refueled_at,r.odometer,r.liters,r.price_per_liter,v.name vehicle_name FROM sync_conflicts sc JOIN refuels r ON r.id=sc.refuel_id JOIN vehicles v ON v.id=r.vehicle_id WHERE sc.status='open' ORDER BY sc.detected_at DESC""")
+ return tpl.TemplateResponse('sync_diagnostics.html',{'request':request,'diagnostics':sync_diagnostics(),'modified':modified,'conflicts':conflicts,**common()})
+
+@app.post('/sync/update/{refuel_id}')
+async def sync_update_remote(refuel_id:int):
+ from .spritmonitor_sync import update_remote
+ data=rows('''SELECT r.*,v.name local_name,m.spritmonitor_vehicle_id,m.tank_id,m.currency_id,m.quantity_unit_id FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id JOIN spritmonitor_vehicle_map m ON m.local_vehicle_id=r.vehicle_id WHERE r.id=?''',(refuel_id,))
+ if not data:return RedirectResponse('/sync/diagnostics?error=Tankung+nicht+gefunden',303)
+ try:await update_remote(data[0],data[0])
+ except Exception as e:return RedirectResponse('/sync/diagnostics?error='+str(e).replace(' ','+'),303)
+ return RedirectResponse('/sync/diagnostics?updated=1',303)
+
+@app.post('/sync/delete-remote/{refuel_id}')
+async def sync_delete_remote(refuel_id:int):
+ from .spritmonitor_sync import delete_remote
+ data=rows('''SELECT r.*,m.spritmonitor_vehicle_id,m.tank_id FROM refuels r JOIN spritmonitor_vehicle_map m ON m.local_vehicle_id=r.vehicle_id WHERE r.id=?''',(refuel_id,))
+ if not data:return RedirectResponse('/sync/diagnostics?error=Tankung+nicht+gefunden',303)
+ try:await delete_remote(data[0],data[0])
+ except Exception as e:return RedirectResponse('/sync/diagnostics?error='+str(e).replace(' ','+'),303)
+ return RedirectResponse('/sync/diagnostics?deleted=1',303)
+
+@app.post('/sync/conflict/{conflict_id}/local')
+async def resolve_conflict_local(conflict_id:int):
+ from .spritmonitor_sync import update_remote
+ conflict=(rows('SELECT * FROM sync_conflicts WHERE id=? AND status="open"',(conflict_id,)) or [None])[0]
+ if not conflict:return RedirectResponse('/sync/diagnostics?error=Konflikt+nicht+gefunden',303)
+ data=rows('''SELECT r.*,m.spritmonitor_vehicle_id,m.tank_id,m.currency_id,m.quantity_unit_id FROM refuels r JOIN spritmonitor_vehicle_map m ON m.local_vehicle_id=r.vehicle_id WHERE r.id=?''',(conflict['refuel_id'],))
+ try:await update_remote(data[0],data[0])
+ except Exception as e:return RedirectResponse('/sync/diagnostics?error='+str(e).replace(' ','+'),303)
+ with connect() as c:c.execute("UPDATE sync_conflicts SET status='local_won',resolved_at=CURRENT_TIMESTAMP WHERE id=?",(conflict_id,))
+ return RedirectResponse('/sync/diagnostics?resolved=1',303)
+
+@app.post('/sync/conflict/{conflict_id}/remote')
+def resolve_conflict_remote(conflict_id:int):
+ import json
+ conflict=(rows('SELECT * FROM sync_conflicts WHERE id=? AND status="open"',(conflict_id,)) or [None])[0]
+ if not conflict:return RedirectResponse('/sync/diagnostics?error=Konflikt+nicht+gefunden',303)
+ r=json.loads(conflict['remote_json'])
+ with connect() as c:
+  c.execute("""UPDATE refuels SET refueled_at=?,odometer=?,liters=?,price_per_liter=?,price=?,tank_type=?,spritmonitor_fuel_code=?,station_brand=?,location=?,sync_status='synced',sync_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",(r.get('refueled_at'),r.get('odometer'),r.get('liters'),r.get('price_per_liter'),r.get('price_per_liter'),r.get('tank_type'),r.get('spritmonitor_fuel_code'),r.get('station_brand'),r.get('location'),conflict['refuel_id']))
+  c.execute("UPDATE sync_conflicts SET status='remote_won',resolved_at=CURRENT_TIMESTAMP WHERE id=?",(conflict_id,))
+ return RedirectResponse('/sync/diagnostics?resolved=1',303)

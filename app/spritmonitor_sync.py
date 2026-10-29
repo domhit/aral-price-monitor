@@ -85,11 +85,18 @@ async def pull_all():
    for raw in remote:
     x=normalize(raw);now=datetime.now(timezone.utc).isoformat();existing=byid.get(str(x['external_id'])) if x['external_id'] else None
     if existing:
-     with connect() as c:c.execute("UPDATE refuels SET last_synced_at=?,sync_status='synced',sync_error=NULL WHERE id=?",(now,existing['id']))
+     remote_cmp=comparable_remote(x);local_cmp=comparable_local(existing)
+     if existing.get('sync_status')=='modified' and changed(local_cmp,remote_cmp):
+      with connect() as c:
+       open_conflict=c.execute("SELECT 1 FROM sync_conflicts WHERE refuel_id=? AND status='open'",(existing['id'],)).fetchone()
+       if not open_conflict:c.execute("INSERT INTO sync_conflicts(refuel_id,detected_at,local_json,remote_json) VALUES(?,?,?,?)",(existing['id'],now,json.dumps(local_cmp,ensure_ascii=False),json.dumps(remote_cmp,ensure_ascii=False)))
+       c.execute("UPDATE refuels SET sync_status='conflict',remote_snapshot=?,last_synced_at=? WHERE id=?",(json.dumps(remote_cmp,ensure_ascii=False),now,existing['id']))
+     else:
+      with connect() as c:c.execute("UPDATE refuels SET last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?",(now,json.dumps(remote_cmp,ensure_ascii=False),existing['id']))
      continue
     match=byfp.get(fp(m['local_vehicle_id'],x['refueled_at'],x['odometer'],x['liters'],x['total_cost']))
     if match:
-     with connect() as c:c.execute("UPDATE refuels SET external_id=?,last_synced_at=?,sync_status='synced',sync_error=NULL WHERE id=?",(x['external_id'],now,match['id']))
+     with connect() as c:c.execute("UPDATE refuels SET external_id=?,last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?",(x['external_id'],now,json.dumps(comparable_remote(x),ensure_ascii=False),match['id']))
      linked+=1;continue
     if not x['liters'] or not x['refueled_at']:errors+=1;continue
     price=x['price_per_liter'] or 0;total=x['total_cost'] or round(x['liters']*price,2)
@@ -110,3 +117,34 @@ async def sync(mode=None):
  status='ok' if result['errors']==0 else 'warning';finish=datetime.now(timezone.utc).isoformat()
  with connect() as c:c.execute('UPDATE sync_runs SET finished_at=?,status=?,vehicles=?,remote_fuelings=?,linked=?,inserted=?,pushed=?,errors=?,message=? WHERE id=?',(finish,status,result['vehicles'],result['remote'],result['linked'],result['inserted'],pushed,result['errors'],' | '.join(result['messages']),run))
  return {**result,'pushed':pushed,'status':status}
+
+def comparable_local(r):
+ return {'refueled_at':str(r.get('refueled_at') or '')[:10],'odometer':num(r.get('odometer')),'liters':num(r.get('liters')),'price_per_liter':num(r.get('price_per_liter') or r.get('price')),'tank_type':r.get('tank_type'),'spritmonitor_fuel_code':r.get('spritmonitor_fuel_code'),'station_brand':r.get('station_brand') or '','location':r.get('location') or ''}
+def comparable_remote(x):
+ return {'refueled_at':str(x.get('refueled_at') or '')[:10],'odometer':num(x.get('odometer')),'liters':num(x.get('liters')),'price_per_liter':num(x.get('price_per_liter')),'tank_type':x.get('tank_type'),'spritmonitor_fuel_code':x.get('spritmonitor_fuel_code'),'station_brand':x.get('station_brand') or '','location':x.get('location') or ''}
+def changed(a,b):
+ for k in ('refueled_at','odometer','liters','price_per_liter','tank_type','spritmonitor_fuel_code'):
+  av,bv=a.get(k),b.get(k)
+  if isinstance(av,float) or isinstance(bv,float):
+   if abs(float(av or 0)-float(bv or 0))>0.005:return True
+  elif str(av or '')!=str(bv or ''):return True
+ return False
+async def update_remote(r,m):
+ if not r.get('external_id'):raise ValueError('Keine Spritmonitor-ID vorhanden')
+ payload=outbound_payload(r,m);path=f"/vehicle/{m['spritmonitor_vehicle_id']}/tank/{m.get('tank_id') or '1'}/fueling/{r['external_id']}.json"
+ async with httpx.AsyncClient(follow_redirects=True) as c:body=await get_json(c,path,payload)
+ check_response(body);now=datetime.now(timezone.utc).isoformat()
+ with connect() as db:db.execute("UPDATE refuels SET last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?",(now,json.dumps(comparable_local(r),ensure_ascii=False),r['id']))
+ return body
+async def delete_remote(r,m):
+ if not r.get('external_id'):raise ValueError('Keine Spritmonitor-ID vorhanden')
+ path=f"/vehicle/{m['spritmonitor_vehicle_id']}/tank/{m.get('tank_id') or '1'}/fueling/{r['external_id']}.delete"
+ async with httpx.AsyncClient(follow_redirects=True) as c:body=await get_json(c,path)
+ check_response(body)
+ with connect() as db:db.execute('DELETE FROM refuels WHERE id=?',(r['id'],))
+ return body
+def sync_diagnostics():
+ maps=rows('SELECT m.*,v.name local_name FROM spritmonitor_vehicle_map m JOIN vehicles v ON v.id=m.local_vehicle_id ORDER BY v.name');out=[]
+ for m in maps:
+  total=rows('SELECT COUNT(*) n FROM refuels WHERE vehicle_id=?',(m['local_vehicle_id'],))[0]['n'];synced=rows("SELECT COUNT(*) n FROM refuels WHERE vehicle_id=? AND external_id IS NOT NULL AND sync_status='synced'",(m['local_vehicle_id'],))[0]['n'];unlinked=rows('SELECT COUNT(*) n FROM refuels WHERE vehicle_id=? AND external_id IS NULL',(m['local_vehicle_id'],))[0]['n'];modified=rows("SELECT COUNT(*) n FROM refuels WHERE vehicle_id=? AND sync_status='modified'",(m['local_vehicle_id'],))[0]['n'];conflicts=rows("SELECT COUNT(*) n FROM sync_conflicts sc JOIN refuels r ON r.id=sc.refuel_id WHERE r.vehicle_id=? AND sc.status='open'",(m['local_vehicle_id'],))[0]['n'];out.append({**m,'local_total':total,'synced':synced,'unlinked':unlinked,'modified':modified,'conflicts':conflicts})
+ return out
