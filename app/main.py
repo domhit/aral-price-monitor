@@ -140,6 +140,8 @@ def vehicle_details(vehicle_id:int,request:Request):
  stats=vehicle_stats(vehicle_id)
  if not stats:raise HTTPException(404,'Fahrzeug nicht gefunden')
  history=rows('''SELECT r.*,s.name station_name FROM refuels r LEFT JOIN stations s ON s.id=r.station_id WHERE r.vehicle_id=? ORDER BY r.refueled_at DESC,r.id DESC LIMIT 250''',(vehicle_id,))
+ from .fuel_labels import fuel_label
+ for r in history:r['fuel_display']=fuel_label(r.get('spritmonitor_fuel_code'),r.get('station_brand'),r.get('station_name'))
  return tpl.TemplateResponse('vehicle_detail.html',{'request':request,'stats':stats,'history':history,**common()})
 
 @app.get('/sync',response_class=HTMLResponse)
@@ -153,14 +155,12 @@ async def sync_page(request:Request):
  local=rows('SELECT * FROM vehicles ORDER BY name');maps=rows('SELECT * FROM spritmonitor_vehicle_map');map_by_local={m['local_vehicle_id']:m for m in maps};last=(rows('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1') or [None])[0]
  remote_simple=[{'id':rid(v),'name':rname(v)} for v in remote if rid(v)]
  return tpl.TemplateResponse('sync.html',{'request':request,'enabled':config.SPRITMONITOR_ENABLED,'credentials':bool(config.SPRITMONITOR_APP_TOKEN and config.SPRITMONITOR_BEARER_TOKEN),'remote':remote_simple,'local':local,'map_by_local':map_by_local,'last':last,'error':error,**common()})
-
 @app.post('/sync/mapping')
 def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),remote_name:str=Form('')):
  with connect() as c:
-  if remote_vehicle_id:c.execute('''INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,remote_name) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,remote_name=excluded.remote_name''',(local_vehicle_id,remote_vehicle_id,remote_name))
+  if remote_vehicle_id:c.execute('INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,remote_name) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,remote_name=excluded.remote_name',(local_vehicle_id,remote_vehicle_id,remote_name))
   else:c.execute('DELETE FROM spritmonitor_vehicle_map WHERE local_vehicle_id=?',(local_vehicle_id,))
  return RedirectResponse('/sync',303)
-
 @app.post('/sync/run')
 async def sync_run():
  from .spritmonitor_api import sync_readonly
