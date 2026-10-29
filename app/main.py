@@ -1,7 +1,7 @@
 import asyncio,re
 from contextlib import asynccontextmanager
 from datetime import datetime,timezone
-from fastapi import FastAPI,Request,Form,HTTPException,UploadFile,File
+from fastapi import FastAPI,Request,Form,HTTPException
 from fastapi.responses import HTMLResponse,RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -119,47 +119,25 @@ def vacuum_database():
     c=sqlite3.connect(DB_PATH);c.execute('VACUUM');c.close();return RedirectResponse('/settings?vacuum=1',303)
 
 @app.get('/refuels',response_class=HTMLResponse)
-def refuels_page(request:Request,edit:int|None=None):
- from .refuel_meta import TANK_TYPES,DRIVING,FUELS,route_name
- vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name')
- history=rows('SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY r.refueled_at DESC,r.id DESC LIMIT 500')
- editing=(rows('SELECT * FROM refuels WHERE id=?',(edit,)) or [None])[0] if edit else None
- for r in history:
-  r['tank_type_name']=TANK_TYPES.get(r.get('tank_type'),'–');r['fuel_name']=FUELS.get(r.get('spritmonitor_fuel_code'),'–');r['driving_name']=DRIVING.get(r.get('driving_style_code'),'–');r['route_name']=route_name(r.get('route_code'))
- return tpl.TemplateResponse('refuels.html',{'request':request,'vehicles':vehicles,'stations':stations,'history':history,'editing':editing,'tank_types':TANK_TYPES,'fuel_types':FUELS,**common()})
+def refuels_page(request:Request):
+    vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name');history=rows("SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY r.refueled_at DESC LIMIT 100")
+    return tpl.TemplateResponse('refuels.html',{'request':request,'vehicles':vehicles,'stations':stations,'history':history,**common()})
 
-@app.post('/refuels/save')
-def refuel_save(id:str=Form(''),vehicle_id:int=Form(...),station_id:str=Form(''),liters:float=Form(...),price:float=Form(...),refueled_at:str=Form(...),odometer:str=Form(''),trip_km:str=Form(''),tank_type:int=Form(1),spritmonitor_fuel_code:str=Form(''),station_brand:str=Form(''),location:str=Form(''),note:str=Form('')):
- total=round(liters*price,2);sid=int(station_id) if station_id else None;vals=(vehicle_id,sid,liters,price,total,refueled_at,float(odometer) if odometer else None,float(trip_km) if trip_km else None,tank_type,int(spritmonitor_fuel_code) if spritmonitor_fuel_code else None,station_brand.strip(),location.strip(),note.strip())
- with connect() as c:
-  if id:
-   c.execute("UPDATE refuels SET vehicle_id=?,station_id=?,liters=?,price=?,total=?,refueled_at=?,odometer=?,trip_km=?,tank_type=?,spritmonitor_fuel_code=?,station_brand=?,location=?,note=?,price_per_liter=?,total_cost=?,sync_status='modified',updated_at=CURRENT_TIMESTAMP WHERE id=?",(*vals,price,total,int(id)))
-  else:
-   c.execute("INSERT INTO refuels(vehicle_id,station_id,liters,price,total,refueled_at,odometer,trip_km,tank_type,spritmonitor_fuel_code,station_brand,location,note,price_per_liter,total_cost,source,sync_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual','local')",(*vals,price,total))
- return RedirectResponse('/refuels',303)
+@app.post('/refuels')
+def refuel_save(vehicle_id:int=Form(...),station_id:int=Form(...),liters:float=Form(...),price:float=Form(...),refueled_at:str=Form(...),odometer:str=Form('')):
+    from .admin import add_refuel
+    add_refuel(vehicle_id,station_id,liters,price,refueled_at,float(odometer) if odometer.strip() else None);return RedirectResponse('/refuels',303)
 
-@app.post('/refuels/{id}/delete')
-def refuel_delete(id:int):
- with connect() as c:c.execute('DELETE FROM refuels WHERE id=?',(id,))
- return RedirectResponse('/refuels?deleted=1',303)
+@app.get('/vehicle-dashboard',response_class=HTMLResponse)
+def vehicle_dashboard(request:Request):
+ from .vehicle_stats import vehicle_stats
+ vehicles=rows('SELECT * FROM vehicles ORDER BY name');stats=[vehicle_stats(v['id']) for v in vehicles]
+ return tpl.TemplateResponse('vehicle_dashboard.html',{'request':request,'stats':stats,**common()})
 
-@app.post('/refuels/import/preview',response_class=HTMLResponse)
-async def import_preview(request:Request,vehicle_id:int=Form(...),file:UploadFile=File(...)):
- from .spritmonitor import parse,encode
- raw=await file.read()
- try:data=parse(raw)
- except Exception as e:return RedirectResponse('/refuels?import_error='+str(e).replace(' ','+'),303)
- vehicle=(rows('SELECT * FROM vehicles WHERE id=?',(vehicle_id,)) or [None])[0]
- return tpl.TemplateResponse('import_preview.html',{'request':request,'data':data,'vehicle':vehicle,'token':encode(raw),**common()})
-
-@app.post('/refuels/import/confirm')
-def import_confirm(vehicle_id:int=Form(...),token:str=Form(...)):
- from .spritmonitor import import_csv,decode_token
- try:i,d,e=import_csv(vehicle_id,decode_token(token))
- except Exception as ex:return RedirectResponse('/refuels?import_error='+str(ex).replace(' ','+'),303)
- return RedirectResponse(f'/refuels?imported={i}&duplicates={d}&errors={e}',303)
-
-@app.get('/costs',response_class=HTMLResponse)
-def costs_page(request:Request):
- costs=rows('SELECT c.*,v.name vehicle_name FROM vehicle_costs c JOIN vehicles v ON v.id=c.vehicle_id ORDER BY c.cost_date DESC')
- return tpl.TemplateResponse('costs.html',{'request':request,'costs':costs,**common()})
+@app.get('/vehicles/{vehicle_id}/details',response_class=HTMLResponse)
+def vehicle_details(vehicle_id:int,request:Request):
+ from .vehicle_stats import vehicle_stats
+ stats=vehicle_stats(vehicle_id)
+ if not stats:raise HTTPException(404,'Fahrzeug nicht gefunden')
+ history=rows('''SELECT r.*,s.name station_name FROM refuels r LEFT JOIN stations s ON s.id=r.station_id WHERE r.vehicle_id=? ORDER BY r.refueled_at DESC,r.id DESC LIMIT 250''',(vehicle_id,))
+ return tpl.TemplateResponse('vehicle_detail.html',{'request':request,'stats':stats,'history':history,**common()})

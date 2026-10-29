@@ -1,30 +1,29 @@
-# Aral Price Monitor v0.4.3
+# Aral Price Monitor v0.4.4
 
-V0.4.3 improves the refuel history and adds full edit/delete support.
+V0.4.4 adds per-vehicle dashboards based on the local refuel history.
 
 ## New
+- Vehicle overview dashboard for all configured vehicles.
+- Individual vehicle detail page.
+- Long-term consumption.
+- Number of refuels, total liters and fuel costs.
+- Average fuel price.
+- Recorded odometer range.
+- Fuel cost per 100 km.
+- Consumption history chart.
+- Fuel price history chart.
+- Fuel-code breakdown.
+- Per-vehicle refuel history including station information.
+- Direct Dashboard button in the vehicle administration page.
 
-- Edit and delete manual or imported refuels.
-- Card-based refuel history with vehicle, station brand, imported location, liters, price, total, odometer, trip distance, tank type, fuel name, driving style, route profile, consumption and source.
-- Imported Spritmonitor station brand and full location are displayed even when no internal station is linked.
-- Editing recalculates total cost and marks the entry as `modified`, preparing future API synchronization.
-- Sync preparation fields: `external_updated_at`, `last_synced_at`, and `sync_status`.
-- Existing V0.4 database and imported history are migrated in place.
-- Import preview uses collision-safe Jinja dictionary access.
-- Existing `Kosten` data remain available.
-
-## Remove old manual duplicates
-
-Open `Tankungen`, locate the two old entries with source `manual`, and click `Löschen`. Imported rows use source `spritmonitor_csv`.
+The dashboard prefers imported Spritmonitor consumption values where available. Existing price data, refuels, settings and SQLite history are migrated in place.
 
 ## Upgrade
-
 Keep the existing `/data` volume.
-
 ```bash
 git add .
-git commit -m "feat: add refuel history edit and delete"
+git commit -m "feat: add per-vehicle fuel and consumption dashboards"
 git push origin main
-git tag v0.4.3
-git push origin v0.4.3
+git tag v0.4.4
+git push origin v0.4.4
 ```

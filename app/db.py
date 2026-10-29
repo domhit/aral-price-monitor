@@ -24,7 +24,7 @@ def init_db():
  with connect() as c:c.executescript(SCHEMA);seed(c)
  migrate_v03()
  migrate_v04()
- migrate_v043()
+ migrate_v044()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -50,15 +50,14 @@ def migrate_v04():
         c.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
         c.execute('''CREATE TABLE IF NOT EXISTS refuels(id INTEGER PRIMARY KEY AUTOINCREMENT,vehicle_id INTEGER NOT NULL,station_id INTEGER,liters REAL NOT NULL,price REAL NOT NULL,total REAL NOT NULL,refueled_at TEXT NOT NULL,odometer REAL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,FOREIGN KEY(station_id) REFERENCES stations(id) ON DELETE SET NULL)''')
 
-def migrate_v043():
+def migrate_v044():
     with connect() as c:
         c.execute('CREATE TABLE IF NOT EXISTS schema_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
         cols={r['name'] for r in c.execute('PRAGMA table_info(refuels)')}
-        additions={'trip_km':'REAL','price_per_liter':'REAL','total_cost':'REAL','currency':"TEXT DEFAULT 'EUR'",'tank_type':'INTEGER','tire_code':'INTEGER','route_code':'INTEGER','driving_style_code':'INTEGER','spritmonitor_fuel_code':'INTEGER','note':"TEXT NOT NULL DEFAULT ''",'reported_consumption':'REAL','bc_consumption':'REAL','bc_fuel_quantity':'REAL','bc_speed':'REAL','station_brand':'TEXT','country':'TEXT','region':'TEXT','location':'TEXT','latitude':'REAL','longitude':'REAL','source':"TEXT NOT NULL DEFAULT 'manual'",'external_id':'TEXT','import_key':'TEXT','external_updated_at':'TEXT','last_synced_at':'TEXT','sync_status':"TEXT NOT NULL DEFAULT 'local'",'updated_at':'TEXT'}
+        additions={'trip_km':'REAL','price_per_liter':'REAL','total_cost':'REAL','currency':"TEXT DEFAULT 'EUR'",'tank_type':'INTEGER','tire_code':'INTEGER','route_code':'INTEGER','driving_style_code':'INTEGER','spritmonitor_fuel_code':'INTEGER','note':"TEXT NOT NULL DEFAULT ''",'reported_consumption':'REAL','bc_consumption':'REAL','bc_fuel_quantity':'REAL','bc_speed':'REAL','station_brand':'TEXT','country':'TEXT','region':'TEXT','location':'TEXT','latitude':'REAL','longitude':'REAL','source':"TEXT NOT NULL DEFAULT 'manual'",'external_id':'TEXT','import_key':'TEXT','sync_status':"TEXT NOT NULL DEFAULT 'local'",'updated_at':'TEXT'}
         for name,sql in additions.items():
             if name not in cols:c.execute(f'ALTER TABLE refuels ADD COLUMN {name} {sql}')
         c.execute('UPDATE refuels SET price_per_liter=price WHERE price_per_liter IS NULL')
         c.execute('UPDATE refuels SET total_cost=total WHERE total_cost IS NULL')
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_refuels_import_key ON refuels(import_key) WHERE import_key IS NOT NULL')
-        c.execute('''CREATE TABLE IF NOT EXISTS vehicle_costs(id INTEGER PRIMARY KEY AUTOINCREMENT,vehicle_id INTEGER NOT NULL,cost_date TEXT NOT NULL,odometer REAL,cost_type_code INTEGER NOT NULL,total_cost REAL NOT NULL,currency TEXT NOT NULL DEFAULT 'EUR',note TEXT NOT NULL DEFAULT '',recurrence_months INTEGER NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT 'manual',import_key TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE)''')
-        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.4.3')")
+        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.4.4')")
