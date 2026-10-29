@@ -25,7 +25,7 @@ def init_db():
  migrate_v03()
  migrate_v04()
  migrate_v044()
- migrate_v053()
+ migrate_v054()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -63,11 +63,12 @@ def migrate_v044():
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_refuels_import_key ON refuels(import_key) WHERE import_key IS NOT NULL')
         c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.4.4')")
 
-def migrate_v053():
+def migrate_v054():
     with connect() as c:
         c.execute('CREATE TABLE IF NOT EXISTS schema_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
         cols={r['name'] for r in c.execute('PRAGMA table_info(refuels)')}
-        for name,sql in {'external_updated_at':'TEXT','last_synced_at':'TEXT','sync_status':"TEXT NOT NULL DEFAULT 'local'",'sync_error':'TEXT','updated_at':'TEXT'}.items():
+        additions={'external_updated_at':'TEXT','last_synced_at':'TEXT','sync_status':"TEXT NOT NULL DEFAULT 'local'",'sync_error':'TEXT','updated_at':'TEXT','attributes':'TEXT','streets':'TEXT'}
+        for name,sql in additions.items():
             if name not in cols:c.execute(f'ALTER TABLE refuels ADD COLUMN {name} {sql}')
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_refuels_external ON refuels(external_id) WHERE external_id IS NOT NULL')
         c.execute('''CREATE TABLE IF NOT EXISTS spritmonitor_vehicle_map(local_vehicle_id INTEGER PRIMARY KEY,spritmonitor_vehicle_id TEXT NOT NULL UNIQUE,remote_name TEXT,tank_id TEXT NOT NULL DEFAULT '1',currency_id INTEGER NOT NULL DEFAULT 1,quantity_unit_id INTEGER NOT NULL DEFAULT 1,last_synced_at TEXT,FOREIGN KEY(local_vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE)''')
@@ -78,4 +79,4 @@ def migrate_v053():
         scols={r['name'] for r in c.execute('PRAGMA table_info(sync_runs)')}
         for name,sql in {'mode':"TEXT NOT NULL DEFAULT 'read_only'",'pushed':'INTEGER NOT NULL DEFAULT 0'}.items():
             if name not in scols:c.execute(f'ALTER TABLE sync_runs ADD COLUMN {name} {sql}')
-        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.5.3')")
+        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.5.4')")

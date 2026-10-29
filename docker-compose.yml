@@ -22,7 +22,6 @@ services:
       SPRITMONITOR_APP_TOKEN: ""
       SPRITMONITOR_BEARER_TOKEN: ""
       SPRITMONITOR_SYNC_MODE: "read_only"
-      SPRITMONITOR_SYNC_INTERVAL: 900
       ANALYSIS_DAYS: 30
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]

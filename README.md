@@ -1,32 +1,23 @@
-# Aral Price Monitor v0.5.3
+# Aral Price Monitor v0.5.4
 
-V0.5.3 adds safe bidirectional Spritmonitor synchronization for **new local fuelings**.
+V0.5.4 fixes the Spritmonitor write request and expands the manual refuel form.
 
-## Safety model
-- Pull from Spritmonitor remains read-only.
-- Existing CSV imports are linked using fingerprints.
-- New manual local fuelings can be previewed and sent individually.
-- `create_only` first pulls, then sends unsynced manual fuelings.
-- Existing remote fuelings are not modified or deleted.
-- API responses are checked for `errors` and `errormessages`, even on HTTP 200.
-- Failed writes remain local with `sync_status=sync_error` and can be retried.
+## Fixes
+- Uses the documented **GET fueling endpoint with query parameters**, not POST JSON.
+- Sends the documented required parameter `fuelsortid`.
+- Shows sync status, external ID, last sync and sync error per fueling.
+- A failed fueling can be edited and retried without recreating it.
 
-## Portainer
-```yaml
-SPRITMONITOR_ENABLED: "true"
-SPRITMONITOR_APP_TOKEN: "..."
-SPRITMONITOR_BEARER_TOKEN: "..."
-SPRITMONITOR_SYNC_MODE: "read_only"
-SPRITMONITOR_SYNC_INTERVAL: 900
-```
+## Full form
+Date, odometer, trip, liters, price, tank type, fuel sort, tires, route code, driving style, station, country, region, location, coordinates, note and BC values.
 
-Start with `read_only`. Use the web UI to inspect the outgoing preview and send one test fueling individually before using `create_only`.
+## Safety
+Only new local manual fuelings are sent. Existing remote entries are not changed or deleted.
 
-## Release
 ```bash
 git add .
-git commit -m "feat: add safe create-only Spritmonitor sync"
+git commit -m "fix: correct Spritmonitor fueling request and complete refuel form"
 git push origin main
-git tag v0.5.3
-git push origin v0.5.3
+git tag v0.5.4
+git push origin v0.5.4
 ```

@@ -119,14 +119,23 @@ def vacuum_database():
     c=sqlite3.connect(DB_PATH);c.execute('VACUUM');c.close();return RedirectResponse('/settings?vacuum=1',303)
 
 @app.get('/refuels',response_class=HTMLResponse)
-def refuels_page(request:Request):
-    vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name');history=rows("SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY r.refueled_at DESC LIMIT 100")
-    return tpl.TemplateResponse('refuels.html',{'request':request,'vehicles':vehicles,'stations':stations,'history':history,**common()})
+def refuels_page(request:Request,edit:int|None=None):
+    vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name');history=rows("SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY r.refueled_at DESC,r.id DESC LIMIT 500");editing=(rows('SELECT * FROM refuels WHERE id=?',(edit,)) or [None])[0] if edit else None
+    return tpl.TemplateResponse('refuels.html',{'request':request,'vehicles':vehicles,'stations':stations,'history':history,'editing':editing,**common()})
 
-@app.post('/refuels')
-def refuel_save(vehicle_id:int=Form(...),station_id:int=Form(...),liters:float=Form(...),price:float=Form(...),refueled_at:str=Form(...),odometer:str=Form('')):
-    from .admin import add_refuel
-    add_refuel(vehicle_id,station_id,liters,price,refueled_at,float(odometer) if odometer.strip() else None);return RedirectResponse('/refuels',303)
+@app.post('/refuels/save')
+def refuel_save(id:str=Form(''),vehicle_id:int=Form(...),station_id:str=Form(''),refueled_at:str=Form(...),odometer:str=Form(''),trip_km:str=Form(''),liters:float=Form(...),price:float=Form(...),tank_type:int=Form(...),spritmonitor_fuel_code:int=Form(...),tire_code:str=Form(''),route_code:str=Form(''),driving_style_code:str=Form(''),station_brand:str=Form(''),country:str=Form(''),region:str=Form(''),location:str=Form(''),latitude:str=Form(''),longitude:str=Form(''),note:str=Form(''),bc_consumption:str=Form(''),bc_fuel_quantity:str=Form(''),bc_speed:str=Form('')):
+    total=round(liters*price,2);sid=int(station_id) if station_id else None
+    vals=(vehicle_id,sid,refueled_at,float(odometer) if odometer else None,float(trip_km) if trip_km else None,liters,price,total,tank_type,spritmonitor_fuel_code,int(tire_code) if tire_code else None,int(route_code) if route_code else None,int(driving_style_code) if driving_style_code else None,station_brand.strip(),country.strip(),region.strip(),location.strip(),float(latitude) if latitude else None,float(longitude) if longitude else None,note.strip(),float(bc_consumption) if bc_consumption else None,float(bc_fuel_quantity) if bc_fuel_quantity else None,float(bc_speed) if bc_speed else None)
+    with connect() as c:
+      if id:c.execute("""UPDATE refuels SET vehicle_id=?,station_id=?,refueled_at=?,odometer=?,trip_km=?,liters=?,price=?,total=?,tank_type=?,spritmonitor_fuel_code=?,tire_code=?,route_code=?,driving_style_code=?,station_brand=?,country=?,region=?,location=?,latitude=?,longitude=?,note=?,bc_consumption=?,bc_fuel_quantity=?,bc_speed=?,price_per_liter=?,total_cost=?,sync_status=CASE WHEN external_id IS NULL THEN 'local' ELSE 'modified' END,sync_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",(*vals,price,total,int(id)))
+      else:c.execute("""INSERT INTO refuels(vehicle_id,station_id,refueled_at,odometer,trip_km,liters,price,total,tank_type,spritmonitor_fuel_code,tire_code,route_code,driving_style_code,station_brand,country,region,location,latitude,longitude,note,bc_consumption,bc_fuel_quantity,bc_speed,price_per_liter,total_cost,source,sync_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual','local')""",(*vals,price,total))
+    return RedirectResponse('/refuels',303)
+
+@app.post('/refuels/{id}/delete')
+def refuel_delete(id:int):
+    with connect() as c:c.execute('DELETE FROM refuels WHERE id=?',(id,))
+    return RedirectResponse('/refuels?deleted=1',303)
 
 @app.get('/vehicle-dashboard',response_class=HTMLResponse)
 def vehicle_dashboard(request:Request):
@@ -152,32 +161,29 @@ async def sync_page(request:Request):
   except Exception as e:error=str(e)
  local=rows('SELECT * FROM vehicles ORDER BY name');maps=rows('SELECT * FROM spritmonitor_vehicle_map');map_by_local={m['local_vehicle_id']:m for m in maps};last=(rows('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1') or [None])[0]
  remote_simple=[{'id':vehicle_id(v),'name':vehicle_name(v)} for v in remote if vehicle_id(v)]
- pending=pending_rows();preview=[]
- for r in pending:
+ preview=[]
+ for r in pending_rows():
   try:preview.append({'row':r,'payload':outbound_payload(r,r)})
   except Exception as e:preview.append({'row':r,'error':str(e)})
- return tpl.TemplateResponse('sync.html',{'request':request,'enabled':config.SPRITMONITOR_ENABLED,'credentials':bool(config.SPRITMONITOR_APP_TOKEN and config.SPRITMONITOR_BEARER_TOKEN),'mode':config.SPRITMONITOR_SYNC_MODE,'remote':remote_simple,'local':local,'map_by_local':map_by_local,'last':last,'error':error,'preview':preview,**common()})
-
+ return tpl.TemplateResponse('sync.html',{'request':request,'enabled':config.SPRITMONITOR_ENABLED,'credentials':bool(config.SPRITMONITOR_APP_TOKEN and config.SPRITMONITOR_BEARER_TOKEN),'remote':remote_simple,'local':local,'map_by_local':map_by_local,'last':last,'error':error,'preview':preview,**common()})
 @app.post('/sync/mapping')
-def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),remote_name:str=Form(''),tank_id:str=Form('1')):
+def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),tank_id:str=Form('1')):
  with connect() as c:
-  if remote_vehicle_id:c.execute('''INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,remote_name,tank_id) VALUES(?,?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,remote_name=excluded.remote_name,tank_id=excluded.tank_id''',(local_vehicle_id,remote_vehicle_id,remote_name,tank_id or '1'))
+  if remote_vehicle_id:c.execute('INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,tank_id) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,tank_id=excluded.tank_id',(local_vehicle_id,remote_vehicle_id,tank_id or '1'))
   else:c.execute('DELETE FROM spritmonitor_vehicle_map WHERE local_vehicle_id=?',(local_vehicle_id,))
  return RedirectResponse('/sync',303)
-
 @app.post('/sync/run')
 async def sync_run(mode:str=Form('read_only')):
  from .spritmonitor_sync import sync
  try:await sync(mode)
  except Exception as e:return RedirectResponse('/sync?error='+str(e).replace(' ','+'),303)
  return RedirectResponse('/sync?done=1',303)
-
 @app.post('/sync/push/{refuel_id}')
 async def sync_push_one(refuel_id:int):
  from .spritmonitor_sync import push_one
- data=rows('''SELECT r.*,v.name local_name,m.spritmonitor_vehicle_id,m.tank_id,m.currency_id,m.quantity_unit_id FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id JOIN spritmonitor_vehicle_map m ON m.local_vehicle_id=r.vehicle_id WHERE r.id=?''',(refuel_id,))
- if not data:return RedirectResponse('/sync?error=Tankung+oder+Fahrzeugzuordnung+nicht+gefunden',303)
- try:await push_one(data[0],data[0],False)
+ data=rows('SELECT r.*,v.name local_name,m.spritmonitor_vehicle_id,m.tank_id,m.currency_id,m.quantity_unit_id FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id JOIN spritmonitor_vehicle_map m ON m.local_vehicle_id=r.vehicle_id WHERE r.id=?',(refuel_id,))
+ if not data:return RedirectResponse('/sync?error=Tankung+oder+Zuordnung+nicht+gefunden',303)
+ try:await push_one(data[0],data[0])
  except Exception as e:
   with connect() as c:c.execute("UPDATE refuels SET sync_status='sync_error',sync_error=? WHERE id=?",(str(e),refuel_id))
   return RedirectResponse('/sync?error='+str(e).replace(' ','+'),303)
