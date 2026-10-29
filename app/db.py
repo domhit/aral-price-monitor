@@ -26,6 +26,7 @@ def init_db():
  migrate_v04()
  migrate_v044()
  migrate_v054()
+ migrate_v055()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -80,3 +81,11 @@ def migrate_v054():
         for name,sql in {'mode':"TEXT NOT NULL DEFAULT 'read_only'",'pushed':'INTEGER NOT NULL DEFAULT 0'}.items():
             if name not in scols:c.execute(f'ALTER TABLE sync_runs ADD COLUMN {name} {sql}')
         c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.5.4')")
+
+def migrate_v055():
+    with connect() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS schema_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+        mcols={r['name'] for r in c.execute('PRAGMA table_info(spritmonitor_vehicle_map)')}
+        for name,sql in {'tank_name':'TEXT','tanks_json':'TEXT','history_complete':'INTEGER NOT NULL DEFAULT 0','remote_count':'INTEGER NOT NULL DEFAULT 0'}.items():
+            if name not in mcols:c.execute(f'ALTER TABLE spritmonitor_vehicle_map ADD COLUMN {name} {sql}')
+        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.5.5')")

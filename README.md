@@ -1,23 +1,18 @@
-# Aral Price Monitor v0.5.4
+# Aral Price Monitor v0.5.5
 
-V0.5.4 fixes the Spritmonitor write request and expands the manual refuel form.
+- Discovers real Spritmonitor tanks through `/vehicle/{vehicleId}/tanks.json`.
+- Tank selector replaces guessed Tank ID 1.
+- Full-history reconciliation attempts larger API result windows instead of relying on the default last 15 fuelings.
+- Existing CSV rows are fingerprint-linked to remote IDs, not duplicated.
+- Sync page shows discovered tank and remote history count.
+- Today's price chart ends at the current time; yesterday and median still extend through 24:00.
 
-## Fixes
-- Uses the documented **GET fueling endpoint with query parameters**, not POST JSON.
-- Sends the documented required parameter `fuelsortid`.
-- Shows sync status, external ID, last sync and sync error per fueling.
-- A failed fueling can be edited and retried without recreating it.
-
-## Full form
-Date, odometer, trip, liters, price, tank type, fuel sort, tires, route code, driving style, station, country, region, location, coordinates, note and BC values.
-
-## Safety
-Only new local manual fuelings are sent. Existing remote entries are not changed or deleted.
+The Spritmonitor API documentation states that fueling list endpoints return only the last 15 entries without search parameters, which is why V0.5.5 explicitly requests larger result windows.
 
 ```bash
 git add .
-git commit -m "fix: correct Spritmonitor fueling request and complete refuel form"
+git commit -m "fix: reconcile full Spritmonitor history and discover tank ids"
 git push origin main
-git tag v0.5.4
-git push origin v0.5.4
+git tag v0.5.5
+git push origin v0.5.5
 ```

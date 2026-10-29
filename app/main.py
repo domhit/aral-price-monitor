@@ -154,20 +154,23 @@ def vehicle_details(vehicle_id:int,request:Request):
 @app.get('/sync',response_class=HTMLResponse)
 async def sync_page(request:Request):
  from . import config
- from .spritmonitor_sync import list_vehicles,vehicle_id,vehicle_name,pending_rows,outbound_payload
+ from .spritmonitor_sync import list_vehicles,vehicle_id,vehicle_name,discover_tanks,pending_rows,outbound_payload
  remote=[];error=None
  if config.SPRITMONITOR_ENABLED:
   try:remote=await list_vehicles()
   except Exception as e:error=str(e)
  local=rows('SELECT * FROM vehicles ORDER BY name');maps=rows('SELECT * FROM spritmonitor_vehicle_map');map_by_local={m['local_vehicle_id']:m for m in maps};last=(rows('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1') or [None])[0]
- remote_simple=[{'id':vehicle_id(v),'name':vehicle_name(v)} for v in remote if vehicle_id(v)]
+ remote_simple=[{'id':vehicle_id(v),'name':vehicle_name(v)} for v in remote if vehicle_id(v)];tanks_by_remote={}
+ for r in remote_simple:
+  try:tanks_by_remote[r['id']]=await discover_tanks(r['id'])
+  except Exception:tanks_by_remote[r['id']]=[]
  preview=[]
  for r in pending_rows():
   try:preview.append({'row':r,'payload':outbound_payload(r,r)})
   except Exception as e:preview.append({'row':r,'error':str(e)})
- return tpl.TemplateResponse('sync.html',{'request':request,'enabled':config.SPRITMONITOR_ENABLED,'credentials':bool(config.SPRITMONITOR_APP_TOKEN and config.SPRITMONITOR_BEARER_TOKEN),'remote':remote_simple,'local':local,'map_by_local':map_by_local,'last':last,'error':error,'preview':preview,**common()})
+ return tpl.TemplateResponse('sync.html',{'request':request,'enabled':config.SPRITMONITOR_ENABLED,'credentials':bool(config.SPRITMONITOR_APP_TOKEN and config.SPRITMONITOR_BEARER_TOKEN),'remote':remote_simple,'local':local,'map_by_local':map_by_local,'last':last,'error':error,'preview':preview,'tanks_by_remote':tanks_by_remote,**common()})
 @app.post('/sync/mapping')
-def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),tank_id:str=Form('1')):
+def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),tank_id:str=Form('')):
  with connect() as c:
   if remote_vehicle_id:c.execute('INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,tank_id) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,tank_id=excluded.tank_id',(local_vehicle_id,remote_vehicle_id,tank_id or '1'))
   else:c.execute('DELETE FROM spritmonitor_vehicle_map WHERE local_vehicle_id=?',(local_vehicle_id,))
