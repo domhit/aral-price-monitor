@@ -65,18 +65,14 @@ def delete_station(id:int):
  return RedirectResponse("/stations",303)
 @app.get("/vehicles",response_class=HTMLResponse)
 def vehicles_page(request:Request,edit:int|None=None):
- vs=rows("""SELECT v.*,f.name fuel_name,p.name provider_name,pf.name provider_fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id LEFT JOIN vehicle_price_profiles vp ON vp.vehicle_id=v.id AND vp.enabled=1 LEFT JOIN price_providers p ON p.id=vp.provider_id LEFT JOIN provider_fuels pf ON pf.id=vp.provider_fuel_id ORDER BY v.name""");fuels=rows("SELECT * FROM fuels ORDER BY name");profiles=rows("""SELECT pf.id,p.slug provider_slug,p.name provider_name,pf.name fuel_name,pf.external_id FROM provider_fuels pf JOIN price_providers p ON p.id=pf.provider_id ORDER BY p.name,pf.name""");editing=rows("""SELECT v.*,vp.provider_fuel_id selected_provider_fuel_id FROM vehicles v LEFT JOIN vehicle_price_profiles vp ON vp.vehicle_id=v.id AND vp.enabled=1 WHERE v.id=?""",(edit,))[0] if edit and rows("SELECT 1 FROM vehicles WHERE id=?",(edit,)) else None
- return tpl.TemplateResponse("vehicles.html",{"request":request,"vehicles":vs,"fuels":fuels,"profiles":profiles,"editing":editing,**common()})
+ vs=rows("SELECT v.*,f.name fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id ORDER BY v.name");fuels=rows("SELECT * FROM fuels ORDER BY name");editing=rows("SELECT * FROM vehicles WHERE id=?",(edit,))[0] if edit and rows("SELECT 1 FROM vehicles WHERE id=?",(edit,)) else None
+ return tpl.TemplateResponse("vehicles.html",{"request":request,"vehicles":vs,"fuels":fuels,"editing":editing,**common()})
 @app.post("/vehicles/save")
-def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1"),provider_fuel_id:str=Form("")):
+def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1")):
  tank=float(tank_capacity) if tank_capacity.strip() else None;act=1 if active=="1" else 0
  with connect() as c:
   if id:c.execute("UPDATE vehicles SET name=?,fuel_id=?,consumption=?,tank_capacity=?,season_start=?,season_end=?,active=? WHERE id=?",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,int(id)))
-  else:
-   cur=c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active) VALUES(?,?,?,?,?,?,?)",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act));id=str(cur.lastrowid)
-  c.execute("UPDATE vehicle_price_profiles SET enabled=0 WHERE vehicle_id=?",(int(id),))
-  if provider_fuel_id:
-   c.execute("""INSERT INTO vehicle_price_profiles(vehicle_id,provider_id,provider_fuel_id,enabled) SELECT ?,provider_id,id,1 FROM provider_fuels WHERE id=? ON CONFLICT(vehicle_id,provider_id,provider_fuel_id) DO UPDATE SET enabled=1""",(int(id),int(provider_fuel_id)))
+  else:c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active) VALUES(?,?,?,?,?,?,?)",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act))
  return RedirectResponse("/vehicles",303)
 @app.post("/vehicles/{id}/delete")
 def delete_vehicle(id:int):
@@ -123,15 +119,29 @@ def vacuum_database():
     c=sqlite3.connect(DB_PATH);c.execute('VACUUM');c.close();return RedirectResponse('/settings?vacuum=1',303)
 
 @app.get('/refuels',response_class=HTMLResponse)
-def refuels_page(request:Request):
-    vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name');history=rows("SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY r.refueled_at DESC LIMIT 100")
-    return tpl.TemplateResponse('refuels.html',{'request':request,'vehicles':vehicles,'stations':stations,'history':history,**common()})
+def refuels_page(request:Request,edit:int|None=None):
+ from .refuel_meta import TANK_TYPES,DRIVING,FUELS,route_name
+ vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name')
+ history=rows('SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY r.refueled_at DESC,r.id DESC LIMIT 500')
+ editing=(rows('SELECT * FROM refuels WHERE id=?',(edit,)) or [None])[0] if edit else None
+ for r in history:
+  r['tank_type_name']=TANK_TYPES.get(r.get('tank_type'),'–');r['fuel_name']=FUELS.get(r.get('spritmonitor_fuel_code'),'–');r['driving_name']=DRIVING.get(r.get('driving_style_code'),'–');r['route_name']=route_name(r.get('route_code'))
+ return tpl.TemplateResponse('refuels.html',{'request':request,'vehicles':vehicles,'stations':stations,'history':history,'editing':editing,'tank_types':TANK_TYPES,'fuel_types':FUELS,**common()})
 
-@app.post('/refuels')
-def refuel_save(vehicle_id:int=Form(...),station_id:int=Form(...),liters:float=Form(...),price:float=Form(...),refueled_at:str=Form(...),odometer:str=Form('')):
-    from .admin import add_refuel
-    add_refuel(vehicle_id,station_id,liters,price,refueled_at,float(odometer) if odometer.strip() else None);return RedirectResponse('/refuels',303)
+@app.post('/refuels/save')
+def refuel_save(id:str=Form(''),vehicle_id:int=Form(...),station_id:str=Form(''),liters:float=Form(...),price:float=Form(...),refueled_at:str=Form(...),odometer:str=Form(''),trip_km:str=Form(''),tank_type:int=Form(1),spritmonitor_fuel_code:str=Form(''),station_brand:str=Form(''),location:str=Form(''),note:str=Form('')):
+ total=round(liters*price,2);sid=int(station_id) if station_id else None;vals=(vehicle_id,sid,liters,price,total,refueled_at,float(odometer) if odometer else None,float(trip_km) if trip_km else None,tank_type,int(spritmonitor_fuel_code) if spritmonitor_fuel_code else None,station_brand.strip(),location.strip(),note.strip())
+ with connect() as c:
+  if id:
+   c.execute("UPDATE refuels SET vehicle_id=?,station_id=?,liters=?,price=?,total=?,refueled_at=?,odometer=?,trip_km=?,tank_type=?,spritmonitor_fuel_code=?,station_brand=?,location=?,note=?,price_per_liter=?,total_cost=?,sync_status='modified',updated_at=CURRENT_TIMESTAMP WHERE id=?",(*vals,price,total,int(id)))
+  else:
+   c.execute("INSERT INTO refuels(vehicle_id,station_id,liters,price,total,refueled_at,odometer,trip_km,tank_type,spritmonitor_fuel_code,station_brand,location,note,price_per_liter,total_cost,source,sync_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual','local')",(*vals,price,total))
+ return RedirectResponse('/refuels',303)
 
+@app.post('/refuels/{id}/delete')
+def refuel_delete(id:int):
+ with connect() as c:c.execute('DELETE FROM refuels WHERE id=?',(id,))
+ return RedirectResponse('/refuels?deleted=1',303)
 
 @app.post('/refuels/import/preview',response_class=HTMLResponse)
 async def import_preview(request:Request,vehicle_id:int=Form(...),file:UploadFile=File(...)):
@@ -150,39 +160,6 @@ def import_confirm(vehicle_id:int=Form(...),token:str=Form(...)):
  return RedirectResponse(f'/refuels?imported={i}&duplicates={d}&errors={e}',303)
 
 @app.get('/costs',response_class=HTMLResponse)
-def costs_page(request:Request,edit:int|None=None):
- from .spritmonitor_costs import COST_TYPES
- vehicles=rows('SELECT * FROM vehicles ORDER BY name')
- costs=rows('''SELECT c.*,v.name vehicle_name FROM vehicle_costs c JOIN vehicles v ON v.id=c.vehicle_id ORDER BY c.cost_date DESC,c.id DESC LIMIT 250''')
- editing=(rows('SELECT * FROM vehicle_costs WHERE id=?',(edit,)) or [None])[0] if edit else None
- summary=rows('''SELECT v.name vehicle_name,COUNT(c.id) entries,COALESCE(SUM(c.total_cost),0) total FROM vehicles v LEFT JOIN vehicle_costs c ON c.vehicle_id=v.id GROUP BY v.id ORDER BY v.name''')
- return tpl.TemplateResponse('costs.html',{'request':request,'vehicles':vehicles,'costs':costs,'editing':editing,'types':COST_TYPES,'summary':summary,**common()})
-
-@app.post('/costs/save')
-def costs_save(id:str=Form(''),vehicle_id:int=Form(...),cost_date:str=Form(...),odometer:str=Form(''),distance_km:str=Form(''),cost_type_code:int=Form(...),total_cost:float=Form(...),currency:str=Form('EUR'),note:str=Form(''),recurrence_months:int=Form(0)):
- vals=(vehicle_id,cost_date,float(odometer) if odometer.strip() else None,float(distance_km) if distance_km.strip() else None,cost_type_code,total_cost,currency.strip() or 'EUR',note.strip(),max(0,recurrence_months))
- with connect() as c:
-  if id:c.execute('''UPDATE vehicle_costs SET vehicle_id=?,cost_date=?,odometer=?,distance_km=?,cost_type_code=?,total_cost=?,currency=?,note=?,recurrence_months=?,updated_at=CURRENT_TIMESTAMP WHERE id=?''',(*vals,int(id)))
-  else:c.execute('''INSERT INTO vehicle_costs(vehicle_id,cost_date,odometer,distance_km,cost_type_code,total_cost,currency,note,recurrence_months,source) VALUES(?,?,?,?,?,?,?,?,?,'manual')''',vals)
- return RedirectResponse('/costs',303)
-
-@app.post('/costs/{id}/delete')
-def costs_delete(id:int):
- with connect() as c:c.execute('DELETE FROM vehicle_costs WHERE id=?',(id,))
- return RedirectResponse('/costs',303)
-
-@app.post('/costs/import/preview',response_class=HTMLResponse)
-async def costs_import_preview(request:Request,vehicle_id:int=Form(...),file:UploadFile=File(...)):
- from .spritmonitor_costs import parse,encode
- raw=await file.read()
- try:data=parse(raw)
- except Exception as e:return RedirectResponse('/costs?import_error='+str(e).replace(' ','+'),303)
- vehicle=(rows('SELECT * FROM vehicles WHERE id=?',(vehicle_id,)) or [None])[0]
- return tpl.TemplateResponse('costs_import_preview.html',{'request':request,'data':data,'vehicle':vehicle,'token':encode(raw),**common()})
-
-@app.post('/costs/import/confirm')
-def costs_import_confirm(vehicle_id:int=Form(...),token:str=Form(...)):
- from .spritmonitor_costs import import_csv,decode_token
- try:i,d,e=import_csv(vehicle_id,decode_token(token))
- except Exception as ex:return RedirectResponse('/costs?import_error='+str(ex).replace(' ','+'),303)
- return RedirectResponse(f'/costs?imported={i}&duplicates={d}&errors={e}',303)
+def costs_page(request:Request):
+ costs=rows('SELECT c.*,v.name vehicle_name FROM vehicle_costs c JOIN vehicles v ON v.id=c.vehicle_id ORDER BY c.cost_date DESC')
+ return tpl.TemplateResponse('costs.html',{'request':request,'costs':costs,**common()})
