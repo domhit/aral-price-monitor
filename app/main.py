@@ -128,24 +128,36 @@ def refuel_save(vehicle_id:int=Form(...),station_id:int=Form(...),liters:float=F
     from .admin import add_refuel
     add_refuel(vehicle_id,station_id,liters,price,refueled_at,float(odometer) if odometer.strip() else None);return RedirectResponse('/refuels',303)
 
+@app.get('/vehicle-dashboard',response_class=HTMLResponse)
+def vehicle_dashboard(request:Request):
+ from .vehicle_stats import vehicle_stats
+ vehicles=rows('SELECT * FROM vehicles ORDER BY name');stats=[vehicle_stats(v['id']) for v in vehicles]
+ return tpl.TemplateResponse('vehicle_dashboard.html',{'request':request,'stats':stats,**common()})
+
+@app.get('/vehicles/{vehicle_id}/details',response_class=HTMLResponse)
+def vehicle_details(vehicle_id:int,request:Request):
+ from .vehicle_stats import vehicle_stats
+ stats=vehicle_stats(vehicle_id)
+ if not stats:raise HTTPException(404,'Fahrzeug nicht gefunden')
+ history=rows('''SELECT r.*,s.name station_name FROM refuels r LEFT JOIN stations s ON s.id=r.station_id WHERE r.vehicle_id=? ORDER BY r.refueled_at DESC,r.id DESC LIMIT 250''',(vehicle_id,))
+ return tpl.TemplateResponse('vehicle_detail.html',{'request':request,'stats':stats,'history':history,**common()})
+
 @app.get('/sync',response_class=HTMLResponse)
 async def sync_page(request:Request):
  from . import config
- from .spritmonitor_api import list_vehicles,remote_vehicle_id,remote_vehicle_name
+ from .spritmonitor_api import list_vehicles,rid,rname
  remote=[];error=None
  if config.SPRITMONITOR_ENABLED:
-  try:
-   remote=await list_vehicles()
+  try:remote=await list_vehicles()
   except Exception as e:error=str(e)
  local=rows('SELECT * FROM vehicles ORDER BY name');maps=rows('SELECT * FROM spritmonitor_vehicle_map');map_by_local={m['local_vehicle_id']:m for m in maps};last=(rows('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1') or [None])[0]
- remote_simple=[{'id':remote_vehicle_id(v),'name':remote_vehicle_name(v)} for v in remote if remote_vehicle_id(v)]
+ remote_simple=[{'id':rid(v),'name':rname(v)} for v in remote if rid(v)]
  return tpl.TemplateResponse('sync.html',{'request':request,'enabled':config.SPRITMONITOR_ENABLED,'credentials':bool(config.SPRITMONITOR_APP_TOKEN and config.SPRITMONITOR_BEARER_TOKEN),'remote':remote_simple,'local':local,'map_by_local':map_by_local,'last':last,'error':error,**common()})
 
 @app.post('/sync/mapping')
 def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),remote_name:str=Form('')):
  with connect() as c:
-  if remote_vehicle_id:
-   c.execute('''INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,remote_name) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,remote_name=excluded.remote_name''',(local_vehicle_id,remote_vehicle_id,remote_name))
+  if remote_vehicle_id:c.execute('''INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,remote_name) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,remote_name=excluded.remote_name''',(local_vehicle_id,remote_vehicle_id,remote_name))
   else:c.execute('DELETE FROM spritmonitor_vehicle_map WHERE local_vehicle_id=?',(local_vehicle_id,))
  return RedirectResponse('/sync',303)
 

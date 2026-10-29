@@ -1,11 +1,16 @@
-# Aral Price Monitor v0.5.0
+# Aral Price Monitor v0.5.1
 
-V0.5 introduces a safe read-only Spritmonitor API sync.
+V0.5.1 is the real merge of V0.4.4 vehicle dashboards and V0.5 read-only Spritmonitor sync.
 
-## Spritmonitor API
-The service uses the official v1 API with `APPLICATION-ID` and Bearer authentication. Read-only mode uses the vehicle list and each mapped vehicle's fuelings endpoint. It never sends mutations to Spritmonitor.
+## Included
+- All V0.4.4 vehicle dashboards, KPIs, charts and detail pages.
+- Spritmonitor read-only API vehicle mapping and manual sync.
+- Fingerprint linking of prior CSV imports to remote IDs.
+- Unknown remote fuelings imported locally without deleting local data.
+- Vehicle detail histories now show fuel code, station and location in separate columns.
+- Tokens remain environment variables only.
 
-## Configure in Portainer
+## Portainer
 ```yaml
 SPRITMONITOR_ENABLED: "true"
 SPRITMONITOR_APP_TOKEN: "YOUR_APPLICATION_ID"
@@ -13,22 +18,11 @@ SPRITMONITOR_BEARER_TOKEN: "YOUR_BEARER_TOKEN"
 SPRITMONITOR_SYNC_INTERVAL: 900
 ```
 
-Open **Spritmonitor Sync**, map each local vehicle to the corresponding remote vehicle, then run the first sync manually.
-
-Existing CSV imports are matched using vehicle + date + odometer + liters + total cost. When matched, the remote ID is attached rather than creating a duplicate. Unknown remote fuelings are imported with source `spritmonitor_api`.
-
-## Safety
-- Read-only against Spritmonitor.
-- Existing local data are never deleted by sync.
-- No token is stored in SQLite.
-- Every sync run is logged.
-
-## Upgrade
-Keep the existing `/data` volume.
+## Release
 ```bash
 git add .
-git commit -m "feat: add read-only Spritmonitor API sync"
+git commit -m "fix: merge vehicle dashboards with Spritmonitor read-only sync"
 git push origin main
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.5.1
+git push origin v0.5.1
 ```
