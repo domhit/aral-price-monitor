@@ -140,30 +140,45 @@ def vehicle_details(vehicle_id:int,request:Request):
  stats=vehicle_stats(vehicle_id)
  if not stats:raise HTTPException(404,'Fahrzeug nicht gefunden')
  history=rows('''SELECT r.*,s.name station_name FROM refuels r LEFT JOIN stations s ON s.id=r.station_id WHERE r.vehicle_id=? ORDER BY r.refueled_at DESC,r.id DESC LIMIT 250''',(vehicle_id,))
- from .fuel_labels import fuel_label
- for r in history:r['fuel_display']=fuel_label(r.get('spritmonitor_fuel_code'),r.get('station_brand'),r.get('station_name'))
  return tpl.TemplateResponse('vehicle_detail.html',{'request':request,'stats':stats,'history':history,**common()})
 
 @app.get('/sync',response_class=HTMLResponse)
 async def sync_page(request:Request):
  from . import config
- from .spritmonitor_api import list_vehicles,rid,rname
+ from .spritmonitor_sync import list_vehicles,vehicle_id,vehicle_name,pending_rows,outbound_payload
  remote=[];error=None
  if config.SPRITMONITOR_ENABLED:
   try:remote=await list_vehicles()
   except Exception as e:error=str(e)
  local=rows('SELECT * FROM vehicles ORDER BY name');maps=rows('SELECT * FROM spritmonitor_vehicle_map');map_by_local={m['local_vehicle_id']:m for m in maps};last=(rows('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1') or [None])[0]
- remote_simple=[{'id':rid(v),'name':rname(v)} for v in remote if rid(v)]
- return tpl.TemplateResponse('sync.html',{'request':request,'enabled':config.SPRITMONITOR_ENABLED,'credentials':bool(config.SPRITMONITOR_APP_TOKEN and config.SPRITMONITOR_BEARER_TOKEN),'remote':remote_simple,'local':local,'map_by_local':map_by_local,'last':last,'error':error,**common()})
+ remote_simple=[{'id':vehicle_id(v),'name':vehicle_name(v)} for v in remote if vehicle_id(v)]
+ pending=pending_rows();preview=[]
+ for r in pending:
+  try:preview.append({'row':r,'payload':outbound_payload(r,r)})
+  except Exception as e:preview.append({'row':r,'error':str(e)})
+ return tpl.TemplateResponse('sync.html',{'request':request,'enabled':config.SPRITMONITOR_ENABLED,'credentials':bool(config.SPRITMONITOR_APP_TOKEN and config.SPRITMONITOR_BEARER_TOKEN),'mode':config.SPRITMONITOR_SYNC_MODE,'remote':remote_simple,'local':local,'map_by_local':map_by_local,'last':last,'error':error,'preview':preview,**common()})
+
 @app.post('/sync/mapping')
-def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),remote_name:str=Form('')):
+def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),remote_name:str=Form(''),tank_id:str=Form('1')):
  with connect() as c:
-  if remote_vehicle_id:c.execute('INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,remote_name) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,remote_name=excluded.remote_name',(local_vehicle_id,remote_vehicle_id,remote_name))
+  if remote_vehicle_id:c.execute('''INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,remote_name,tank_id) VALUES(?,?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,remote_name=excluded.remote_name,tank_id=excluded.tank_id''',(local_vehicle_id,remote_vehicle_id,remote_name,tank_id or '1'))
   else:c.execute('DELETE FROM spritmonitor_vehicle_map WHERE local_vehicle_id=?',(local_vehicle_id,))
  return RedirectResponse('/sync',303)
+
 @app.post('/sync/run')
-async def sync_run():
- from .spritmonitor_api import sync_readonly
- try:await sync_readonly()
+async def sync_run(mode:str=Form('read_only')):
+ from .spritmonitor_sync import sync
+ try:await sync(mode)
  except Exception as e:return RedirectResponse('/sync?error='+str(e).replace(' ','+'),303)
  return RedirectResponse('/sync?done=1',303)
+
+@app.post('/sync/push/{refuel_id}')
+async def sync_push_one(refuel_id:int):
+ from .spritmonitor_sync import push_one
+ data=rows('''SELECT r.*,v.name local_name,m.spritmonitor_vehicle_id,m.tank_id,m.currency_id,m.quantity_unit_id FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id JOIN spritmonitor_vehicle_map m ON m.local_vehicle_id=r.vehicle_id WHERE r.id=?''',(refuel_id,))
+ if not data:return RedirectResponse('/sync?error=Tankung+oder+Fahrzeugzuordnung+nicht+gefunden',303)
+ try:await push_one(data[0],data[0],False)
+ except Exception as e:
+  with connect() as c:c.execute("UPDATE refuels SET sync_status='sync_error',sync_error=? WHERE id=?",(str(e),refuel_id))
+  return RedirectResponse('/sync?error='+str(e).replace(' ','+'),303)
+ return RedirectResponse('/sync?pushed=1',303)
