@@ -68,11 +68,11 @@ def vehicles_page(request:Request,edit:int|None=None):
  vs=rows("SELECT v.*,f.name fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id ORDER BY v.name");fuels=rows("SELECT * FROM fuels ORDER BY name");editing=rows("SELECT * FROM vehicles WHERE id=?",(edit,))[0] if edit and rows("SELECT 1 FROM vehicles WHERE id=?",(edit,)) else None
  return tpl.TemplateResponse("vehicles.html",{"request":request,"vehicles":vs,"fuels":fuels,"editing":editing,**common()})
 @app.post("/vehicles/save")
-def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1")):
+def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1"),price_source:str=Form("aral"),price_fuel:str=Form("")):
  tank=float(tank_capacity) if tank_capacity.strip() else None;act=1 if active=="1" else 0
  with connect() as c:
-  if id:c.execute("UPDATE vehicles SET name=?,fuel_id=?,consumption=?,tank_capacity=?,season_start=?,season_end=?,active=? WHERE id=?",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,int(id)))
-  else:c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active) VALUES(?,?,?,?,?,?,?)",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act))
+  if id:c.execute("UPDATE vehicles SET name=?,fuel_id=?,consumption=?,tank_capacity=?,season_start=?,season_end=?,active=?,price_source=?,price_fuel=? WHERE id=?",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,price_source,price_fuel.strip().lower(),int(id)))
+  else:c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active,price_source,price_fuel) VALUES(?,?,?,?,?,?,?,?,?)",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,price_source,price_fuel.strip().lower()))
  return RedirectResponse("/vehicles",303)
 @app.post("/vehicles/{id}/delete")
 def delete_vehicle(id:int):
@@ -80,6 +80,11 @@ def delete_vehicle(id:int):
  return RedirectResponse("/vehicles",303)
 @app.post("/collect")
 async def collect():await collect_once();return RedirectResponse("/",303)
+@app.get("/vehicle-prices",response_class=HTMLResponse)
+def vehicle_prices(request:Request):
+ from .vehicle_prices import all_vehicle_prices
+ return tpl.TemplateResponse("vehicle_prices.html",{"request":request,"items":all_vehicle_prices(),**common()})
+
 @app.get("/health")
 def health():return {"status":"ok","version":VERSION,"last_run":(rows("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1") or [None])[0]}
 

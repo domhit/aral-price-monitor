@@ -27,3 +27,9 @@ git push origin v0.5.6
 - Tankstellkoordinaten werden korrekt aus `coords.lat/lng` gelesen.
 - Freie Standortsuche im Webfrontend; Docker LAT/LNG dienen nur als Standard.
 - Browser-Geolocation-Button für mobile Nutzung.
+
+### V0.7.0
+- Preisquelle und Preis-Kraftstoff je Fahrzeug frei konfigurierbar.
+- Neue Fahrzeugpreise-Ansicht verbindet Aral und Tankerkönig mit den Fahrzeugen.
+- Einfache Tankentscheidung aus aktuellem Preis vs. 30-Tage-Mittel und Tankgröße.
+- Schwellen: <= -5 ct/l Jetzt tanken, <= -2 ct/l Günstig, <= +2 ct/l Normal, darüber Eher warten.
