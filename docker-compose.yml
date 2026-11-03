@@ -1,6 +1,6 @@
 services:
   aral-price-monitor:
-    image: ghcr.io/DEIN_GITHUB_BENUTZER/aral-price-monitor:latest
+    image: ghcr.io/domhit/aral-price-monitor:latest
     container_name: aral-price-monitor
     restart: unless-stopped
     ports:
