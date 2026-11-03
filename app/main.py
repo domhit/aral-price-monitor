@@ -175,6 +175,17 @@ def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),
   if remote_vehicle_id:c.execute('INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,tank_id) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,tank_id=excluded.tank_id',(local_vehicle_id,remote_vehicle_id,tank_id or '1'))
   else:c.execute('DELETE FROM spritmonitor_vehicle_map WHERE local_vehicle_id=?',(local_vehicle_id,))
  return RedirectResponse('/sync',303)
+@app.post('/sync/reset-reimport')
+async def sync_reset_reimport(confirm:str=Form('')):
+ from .admin import make_backup
+ from .config import DB_PATH
+ from .spritmonitor_sync import reset_and_reimport_all
+ import os
+ if confirm!='RESET':return RedirectResponse('/sync?error=Bestätigung+fehlt',303)
+ stamp=datetime.now().strftime('%Y-%m-%d_%H%M%S');backup=os.path.join(os.path.dirname(DB_PATH) or '/data',f'pre-refuel-reset-{stamp}.db')
+ try:make_backup(backup);result=await reset_and_reimport_all()
+ except Exception as e:return RedirectResponse('/sync?error='+str(e).replace(' ','+'),303)
+ return RedirectResponse('/sync?reset=1&imported=%s&errors=%s'%(result.get('inserted',0),result.get('errors',0)),303)
 @app.post('/sync/run')
 async def sync_run(mode:str=Form('read_only')):
  from .spritmonitor_sync import sync

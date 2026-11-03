@@ -33,8 +33,14 @@ def normalize(f):
  liters=num(pick(f,'quantity','liters','amount'));total=num(pick(f,'cost','costs','total_cost','total'));price=num(pick(f,'price','price_per_unit','unitprice'))
  if price is None and total is not None and liters:price=total/liters
  if total is None and price is not None and liters:total=price*liters
- return {'external_id':str(pick(f,'id','fueling_id','fuelingId') or '') or None,'refueled_at':str(pick(f,'date','datetime','timestamp') or '')[:16].replace(' ','T'),'odometer':num(pick(f,'odometer','mileage','km')),'liters':liters,'total_cost':total,'price_per_liter':price,'tank_type':pick(f,'type','tank_type','fueling_type'),'spritmonitor_fuel_code':pick(f,'fuelsortid','fuel','fuel_id','fuelType'),'station_brand':str(pick(f,'stationname','station','station_name','brand') or ''),'location':str(pick(f,'location','place','city') or '')}
-def fp(vid,date,odo,liters,total):return hashlib.sha256(f'{vid}|{str(date or "")[:10]}|{odo}|{round(float(liters or 0),2)}|{round(float(total or 0),2)}'.encode()).hexdigest()
+ return {'external_id':str(pick(f,'id','fueling_id','fuelingId') or '') or None,'refueled_at':clean_date(pick(f,'date','datetime','timestamp')),'odometer':num(pick(f,'odometer','mileage','km')),'liters':liters,'total_cost':total,'price_per_liter':price,'tank_type':pick(f,'type','tank_type','fueling_type'),'spritmonitor_fuel_code':pick(f,'fuelsortid','fuel','fuel_id','fuelType'),'station_brand':str(pick(f,'stationname','station','station_name','brand') or ''),'location':str(pick(f,'location','place','city') or '')}
+def clean_date(v):
+ s=str(v or '').strip()[:10]
+ if not s:return ''
+ try:return datetime.strptime(s,'%d.%m.%Y').date().isoformat() if '.' in s else datetime.fromisoformat(s).date().isoformat()
+ except ValueError:return s
+def match_key(vid,date,odo,liters):return (int(vid),clean_date(date),round(float(odo or 0),1),round(float(liters or 0),2))
+def fp(vid,date,odo,liters,total):return hashlib.sha256('|'.join(map(str,match_key(vid,date,odo,liters))).encode()).hexdigest()
 async def get_json(c,path,params=None):
  r=await c.get(BASE+path,headers=headers(),params=params,timeout=30);r.raise_for_status();return r.json()
 async def list_vehicles():
@@ -81,7 +87,7 @@ async def pull_all():
     with connect() as c:c.execute('UPDATE spritmonitor_vehicle_map SET tank_id=?,tank_name=?,tanks_json=? WHERE local_vehicle_id=?',(selected['id'],selected['name'],json.dumps(tanks,ensure_ascii=False,default=str),m['local_vehicle_id']))
     m['tank_id']=selected['id']
    remote=await list_all_fuelings(m['spritmonitor_vehicle_id'],m.get('tank_id'));remote_count+=len(remote)
-   local=rows('SELECT * FROM refuels WHERE vehicle_id=?',(m['local_vehicle_id'],));byid={str(r['external_id']):r for r in local if r.get('external_id')};byfp={fp(m['local_vehicle_id'],r.get('refueled_at'),r.get('odometer'),r.get('liters'),r.get('total_cost') or r.get('total')):r for r in local}
+   local=rows('SELECT * FROM refuels WHERE vehicle_id=?',(m['local_vehicle_id'],));byid={str(r['external_id']):r for r in local if r.get('external_id')};byfp={match_key(m['local_vehicle_id'],r.get('refueled_at'),r.get('odometer'),r.get('liters')):r for r in local}
    for raw in remote:
     x=normalize(raw);now=datetime.now(timezone.utc).isoformat();existing=byid.get(str(x['external_id'])) if x['external_id'] else None
     if existing:
@@ -94,7 +100,7 @@ async def pull_all():
      else:
       with connect() as c:c.execute("UPDATE refuels SET last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?",(now,json.dumps(remote_cmp,ensure_ascii=False),existing['id']))
      continue
-    match=byfp.get(fp(m['local_vehicle_id'],x['refueled_at'],x['odometer'],x['liters'],x['total_cost']))
+    match=byfp.get(match_key(m['local_vehicle_id'],x['refueled_at'],x['odometer'],x['liters']))
     if match:
      with connect() as c:c.execute("UPDATE refuels SET external_id=?,last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?",(x['external_id'],now,json.dumps(comparable_remote(x),ensure_ascii=False),match['id']))
      linked+=1;continue
@@ -104,6 +110,11 @@ async def pull_all():
    with connect() as c:c.execute('UPDATE spritmonitor_vehicle_map SET last_synced_at=?,history_complete=1,remote_count=? WHERE local_vehicle_id=?',(datetime.now(timezone.utc).isoformat(),len(remote),m['local_vehicle_id']))
   except Exception as e:errors+=1;messages.append(f"{m['local_name']}: {e}")
  return {'vehicles':len(maps),'remote':remote_count,'linked':linked,'inserted':inserted,'errors':errors,'messages':messages}
+async def reset_and_reimport_all():
+   if rows('SELECT COUNT(*) n FROM spritmonitor_vehicle_map')[0]['n']==0:raise ValueError('Keine Spritmonitor-Fahrzeugzuordnungen vorhanden')
+   with connect() as c:
+    c.execute('DELETE FROM sync_conflicts');c.execute('DELETE FROM refuels');c.execute('UPDATE spritmonitor_vehicle_map SET history_complete=0,remote_count=0,last_synced_at=NULL')
+   result=await pull_all();result['reset']=True;return result
 async def sync(mode=None):
  mode=mode or config.SPRITMONITOR_SYNC_MODE;start=datetime.now(timezone.utc).isoformat();pushed=0
  with connect() as c:run=c.execute('INSERT INTO sync_runs(started_at,status,mode) VALUES(?,?,?)',(start,'running',mode)).lastrowid
