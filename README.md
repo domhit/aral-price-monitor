@@ -25,3 +25,9 @@ git push origin v0.5.7
 ### V0.5.7
 - Reset + Vollimport aller gemappten Fahrzeuge mit automatischem DB-Backup.
 - Legacy-Matching normalisiert Datum und nutzt Fahrzeug + Datum + Kilometer + Liter.
+
+
+### V0.6.0
+- Erweiterte Fahrzeug-Dashboards mit Verbrauch, 12-Monats-Verbrauch, Min/Max, Fahrleistung, Kraftstoffkosten und Kosten/100 km.
+- Vier Diagramme: Verbrauch inkl. MA5, Kraftstoffpreis, Kosten/100 km und monatliche Fahrleistung.
+- Kompakte Tabelle der letzten Tankungen im Fahrzeug-Dashboard.
