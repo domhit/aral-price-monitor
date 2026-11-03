@@ -45,3 +45,11 @@ git push origin v0.5.6
 - Coordinates can be copied from cached Tankerkoenig station data via name/address matching or entered manually.
 - Coordinate source and Tankerkoenig station ID are stored with the Aral station.
 - Default location and mobile browser geolocation remain supported.
+
+
+### V0.7.4
+- Current station comparison replaces the historic 30-day-average advantage calculation.
+- Effective cost = current station price × usual refill amount + round-trip driving cost.
+- Usual refill amount uses the vehicle's average liters when at least 10 valid fuelings exist; otherwise 90% of tank capacity.
+- One shared current reference price is used for travel costs, avoiding double-favoring cheap stations.
+- Stations are ranked by effective total cost and compared against the next-best current alternative.
