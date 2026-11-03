@@ -152,15 +152,13 @@ def vehicle_details(vehicle_id:int,request:Request):
  return tpl.TemplateResponse('vehicle_detail.html',{'request':request,'stats':stats,'history':history,**common()})
 
 @app.get('/tankerkoenig',response_class=HTMLResponse)
-async def tankerkoenig_page(request:Request,fuel:str='e10',refresh:int=0):
+async def tankerkoenig_page(request:Request,fuel:str='e10',refresh:int=0,lat:float|None=None,lng:float|None=None,radius:float|None=None):
  from . import config
  from .tankerkoenig import search,latest
- error=None
- try:
-  stations=await search(fuel) if refresh else latest(fuel)
- except Exception as e:
-  stations=latest(fuel);error=str(e)
- return tpl.TemplateResponse('tankerkoenig.html',{'request':request,'stations':stations,'fuel':fuel,'error':error,'tk_enabled':config.TANKERKOENIG_ENABLED,'tk_key':bool(config.TANKERKOENIG_API_KEY),'tk_radius':config.TANKERKOENIG_RADIUS,**common()})
+ error=None;used_lat=lat if lat is not None else config.TANKERKOENIG_LAT;used_lng=lng if lng is not None else config.TANKERKOENIG_LNG;used_radius=radius if radius is not None else config.TANKERKOENIG_RADIUS
+ try:stations=await search(fuel,used_lat,used_lng,used_radius) if refresh else latest(fuel)
+ except Exception as e:stations=latest(fuel);error=str(e)
+ return tpl.TemplateResponse('tankerkoenig.html',{'request':request,'stations':stations,'fuel':fuel,'error':error,'tk_enabled':config.TANKERKOENIG_ENABLED,'tk_key':bool(config.TANKERKOENIG_API_KEY),'lat':used_lat,'lng':used_lng,'radius':used_radius,**common()})
 
 @app.get('/sync',response_class=HTMLResponse)
 async def sync_page(request:Request):

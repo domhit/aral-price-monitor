@@ -22,7 +22,8 @@ git tag v0.5.6
 git push origin v0.5.6
 ```
 
-### V0.6.1
-- Tankerkönig API v4 als zweite Preisquelle für E5, E10 und Diesel.
-- Umkreissuche über konfigurierte Koordinaten und Radius bis 25 km.
-- Eigene Tankerkönig-Ansicht mit manueller Aktualisierung und lokaler SQLite-Preishistorie.
+### V0.6.2
+- Fix: Tankerkönig API v4 liefert Kraftstoffe als `fuels`-Array; E5/E10/Diesel werden daraus korrekt gelesen.
+- Tankstellkoordinaten werden korrekt aus `coords.lat/lng` gelesen.
+- Freie Standortsuche im Webfrontend; Docker LAT/LNG dienen nur als Standard.
+- Browser-Geolocation-Button für mobile Nutzung.
