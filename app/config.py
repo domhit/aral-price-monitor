@@ -10,7 +10,7 @@ MQTT_PASSWORD=os.getenv('MQTT_PASSWORD','')
 MQTT_DISCOVERY_PREFIX=os.getenv('MQTT_DISCOVERY_PREFIX','homeassistant').strip('/')
 MQTT_BASE_TOPIC=os.getenv('MQTT_BASE_TOPIC','aral_price_monitor').strip('/')
 ANALYSIS_DAYS=max(7,min(90,int(os.getenv('ANALYSIS_DAYS','30'))))
-VERSION='0.9.2'
+VERSION='0.9.2.1'
 
 SPRITMONITOR_ENABLED=os.getenv("SPRITMONITOR_ENABLED","false").lower() in {"1","true","yes","on"}
 SPRITMONITOR_APP_TOKEN=os.getenv("SPRITMONITOR_APP_TOKEN","")
@@ -26,7 +26,5 @@ TANKERKOENIG_RADIUS=max(0.1,min(25.0,float(os.getenv("TANKERKOENIG_RADIUS","10")
 OSRM_BASE_URL=os.getenv("OSRM_BASE_URL","https://router.project-osrm.org")
 OSRM_CACHE_HOURS=max(1,int(os.getenv("OSRM_CACHE_HOURS","24")))
 OSRM_ROUTE_CANDIDATES=max(1,min(10,int(os.getenv("OSRM_ROUTE_CANDIDATES","5"))))
-TANK_ASSISTANT_ENABLED=os.getenv('TANK_ASSISTANT_ENABLED','true').lower() in {'1','true','yes','on'}
-TANK_ASSISTANT_MAX_PRICE_AGE_MIN=max(5,int(os.getenv('TANK_ASSISTANT_MAX_PRICE_AGE_MIN','60')))
-TANK_ASSISTANT_DEFAULT_MIN_ADVANTAGE=max(0,float(os.getenv('TANK_ASSISTANT_DEFAULT_MIN_ADVANTAGE','2.0')))
-TANK_ASSISTANT_DEFAULT_MAX_DISTANCE=max(1,float(os.getenv('TANK_ASSISTANT_DEFAULT_MAX_DISTANCE','15')))
+
+TANK_ASSISTANT_MAX_PRICE_AGE_MIN=max(5,int(os.getenv("TANK_ASSISTANT_MAX_PRICE_AGE_MIN","60")))
