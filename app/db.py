@@ -28,6 +28,7 @@ def init_db():
  migrate_v054()
  migrate_v055()
  migrate_v056()
+ migrate_v061()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -99,3 +100,9 @@ def migrate_v056():
             if name not in cols:c.execute(f'ALTER TABLE refuels ADD COLUMN {name} {sql}')
         c.execute('''CREATE TABLE IF NOT EXISTS sync_conflicts(id INTEGER PRIMARY KEY AUTOINCREMENT,refuel_id INTEGER NOT NULL,detected_at TEXT NOT NULL,local_json TEXT NOT NULL,remote_json TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',resolved_at TEXT,FOREIGN KEY(refuel_id) REFERENCES refuels(id) ON DELETE CASCADE)''')
         c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.5.6')")
+
+
+def migrate_v061():
+    with connect() as c:
+        c.execute("""CREATE TABLE IF NOT EXISTS tankerkoenig_prices(id INTEGER PRIMARY KEY AUTOINCREMENT,station_external_id TEXT NOT NULL,station_name TEXT NOT NULL DEFAULT '',brand TEXT NOT NULL DEFAULT '',street TEXT NOT NULL DEFAULT '',place TEXT NOT NULL DEFAULT '',latitude REAL,longitude REAL,distance REAL,fuel_type TEXT NOT NULL,price REAL NOT NULL,is_open INTEGER,retrieved_at TEXT NOT NULL,UNIQUE(station_external_id,fuel_type,retrieved_at))""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tk_price_history ON tankerkoenig_prices(fuel_type,retrieved_at)")

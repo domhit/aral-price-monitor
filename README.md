@@ -1,6 +1,6 @@
-# Aral Price Monitor v0.5.7
+# Aral Price Monitor v0.5.6
 
-V0.5.7 closes the Spritmonitor synchronization chapter before Tankerkönig integration.
+V0.5.6 closes the Spritmonitor synchronization chapter before Tankerkönig integration.
 
 ## New
 - Sync diagnostics per vehicle: local total, last remote count, synced, unlinked, modified and conflicts.
@@ -18,16 +18,11 @@ Spritmonitor documents dedicated endpoints for listing tanks/fuelings and for ad
 git add .
 git commit -m "feat: complete Spritmonitor sync diagnostics and conflict handling"
 git push origin main
-git tag v0.5.7
-git push origin v0.5.7
+git tag v0.5.6
+git push origin v0.5.6
 ```
 
-### V0.5.7
-- Reset + Vollimport aller gemappten Fahrzeuge mit automatischem DB-Backup.
-- Legacy-Matching normalisiert Datum und nutzt Fahrzeug + Datum + Kilometer + Liter.
-
-
-### V0.6.0
-- Erweiterte Fahrzeug-Dashboards mit Verbrauch, 12-Monats-Verbrauch, Min/Max, Fahrleistung, Kraftstoffkosten und Kosten/100 km.
-- Vier Diagramme: Verbrauch inkl. MA5, Kraftstoffpreis, Kosten/100 km und monatliche Fahrleistung.
-- Kompakte Tabelle der letzten Tankungen im Fahrzeug-Dashboard.
+### V0.6.1
+- Tankerkönig API v4 als zweite Preisquelle für E5, E10 und Diesel.
+- Umkreissuche über konfigurierte Koordinaten und Radius bis 25 km.
+- Eigene Tankerkönig-Ansicht mit manueller Aktualisierung und lokaler SQLite-Preishistorie.

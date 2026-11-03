@@ -23,6 +23,11 @@ services:
       SPRITMONITOR_BEARER_TOKEN: ""
       SPRITMONITOR_SYNC_MODE: "read_only"
       ANALYSIS_DAYS: 30
+      TANKERKOENIG_ENABLED: "false"
+      TANKERKOENIG_API_KEY: ""
+      TANKERKOENIG_LAT: ""
+      TANKERKOENIG_LNG: ""
+      TANKERKOENIG_RADIUS: "10"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
       interval: 30s

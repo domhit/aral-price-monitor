@@ -151,6 +151,17 @@ def vehicle_details(vehicle_id:int,request:Request):
  history=rows('''SELECT r.*,s.name station_name FROM refuels r LEFT JOIN stations s ON s.id=r.station_id WHERE r.vehicle_id=? ORDER BY r.refueled_at DESC,r.id DESC LIMIT 250''',(vehicle_id,))
  return tpl.TemplateResponse('vehicle_detail.html',{'request':request,'stats':stats,'history':history,**common()})
 
+@app.get('/tankerkoenig',response_class=HTMLResponse)
+async def tankerkoenig_page(request:Request,fuel:str='e10',refresh:int=0):
+ from . import config
+ from .tankerkoenig import search,latest
+ error=None
+ try:
+  stations=await search(fuel) if refresh else latest(fuel)
+ except Exception as e:
+  stations=latest(fuel);error=str(e)
+ return tpl.TemplateResponse('tankerkoenig.html',{'request':request,'stations':stations,'fuel':fuel,'error':error,'tk_enabled':config.TANKERKOENIG_ENABLED,'tk_key':bool(config.TANKERKOENIG_API_KEY),'tk_radius':config.TANKERKOENIG_RADIUS,**common()})
+
 @app.get('/sync',response_class=HTMLResponse)
 async def sync_page(request:Request):
  from . import config
@@ -175,17 +186,6 @@ def sync_mapping(local_vehicle_id:int=Form(...),remote_vehicle_id:str=Form(...),
   if remote_vehicle_id:c.execute('INSERT INTO spritmonitor_vehicle_map(local_vehicle_id,spritmonitor_vehicle_id,tank_id) VALUES(?,?,?) ON CONFLICT(local_vehicle_id) DO UPDATE SET spritmonitor_vehicle_id=excluded.spritmonitor_vehicle_id,tank_id=excluded.tank_id',(local_vehicle_id,remote_vehicle_id,tank_id or '1'))
   else:c.execute('DELETE FROM spritmonitor_vehicle_map WHERE local_vehicle_id=?',(local_vehicle_id,))
  return RedirectResponse('/sync',303)
-@app.post('/sync/reset-reimport')
-async def sync_reset_reimport(confirm:str=Form('')):
- from .admin import make_backup
- from .config import DB_PATH
- from .spritmonitor_sync import reset_and_reimport_all
- import os
- if confirm!='RESET':return RedirectResponse('/sync?error=Bestätigung+fehlt',303)
- stamp=datetime.now().strftime('%Y-%m-%d_%H%M%S');backup=os.path.join(os.path.dirname(DB_PATH) or '/data',f'pre-refuel-reset-{stamp}.db')
- try:make_backup(backup);result=await reset_and_reimport_all()
- except Exception as e:return RedirectResponse('/sync?error='+str(e).replace(' ','+'),303)
- return RedirectResponse('/sync?reset=1&imported=%s&errors=%s'%(result.get('inserted',0),result.get('errors',0)),303)
 @app.post('/sync/run')
 async def sync_run(mode:str=Form('read_only')):
  from .spritmonitor_sync import sync
