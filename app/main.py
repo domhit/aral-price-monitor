@@ -81,9 +81,12 @@ def delete_vehicle(id:int):
 @app.post("/collect")
 async def collect():await collect_once();return RedirectResponse("/",303)
 @app.get("/vehicle-prices",response_class=HTMLResponse)
-def vehicle_prices(request:Request):
+async def vehicle_prices(request:Request,lat:float|None=None,lng:float|None=None):
  from .vehicle_prices import all_vehicle_prices
- return tpl.TemplateResponse("vehicle_prices.html",{"request":request,"items":all_vehicle_prices(),**common()})
+ from . import config
+ used_lat=lat if lat is not None else config.TANKERKOENIG_LAT;used_lng=lng if lng is not None else config.TANKERKOENIG_LNG
+ items=await all_vehicle_prices(used_lat,used_lng,True)
+ return tpl.TemplateResponse("vehicle_prices.html",{"request":request,"items":items,"lat":used_lat,"lng":used_lng,**common()})
 
 @app.get("/health")
 def health():return {"status":"ok","version":VERSION,"last_run":(rows("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1") or [None])[0]}

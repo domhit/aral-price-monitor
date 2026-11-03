@@ -30,6 +30,7 @@ def init_db():
  migrate_v056()
  migrate_v062()
  migrate_v070()
+ migrate_v072()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -115,3 +116,9 @@ def migrate_v070():
         for name,sql in {'price_source':"TEXT NOT NULL DEFAULT 'aral'",'price_fuel':"TEXT NOT NULL DEFAULT ''"}.items():
             if name not in cols:c.execute(f'ALTER TABLE vehicles ADD COLUMN {name} {sql}')
         c.execute("UPDATE vehicles SET price_fuel=(SELECT slug FROM fuels WHERE fuels.id=vehicles.fuel_id) WHERE COALESCE(price_fuel,'')='' AND price_source='aral'")
+
+
+def migrate_v072():
+    with connect() as c:
+        c.execute("""CREATE TABLE IF NOT EXISTS osrm_route_cache(origin_lat REAL NOT NULL,origin_lng REAL NOT NULL,dest_lat REAL NOT NULL,dest_lng REAL NOT NULL,distance_km REAL NOT NULL,duration_min REAL NOT NULL,retrieved_at TEXT NOT NULL,PRIMARY KEY(origin_lat,origin_lng,dest_lat,dest_lng))""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_osrm_cache_time ON osrm_route_cache(retrieved_at)")
