@@ -2,6 +2,16 @@
 
 All notable project changes are summarized here.
 
+## [0.9.2] - 2026-11-03
+- Consolidated UI and navigation.
+- Home/current-location overview and per-vehicle analysis.
+- Tankerkönig E10 Top-5 history by lowest average price for 7/30/90 days.
+- Vehicle KPIs merged into vehicle management.
+- GPS-based Tankerkönig station/price suggestion within 50/100 m on refueling entry.
+- Update intervals moved to settings.
+- Closed, stale and unroutable stations excluded from recommendation.
+
+
 ## [0.7.5] - 2026-11-03
 
 First public release. Functionally based on the previously tested stable baseline, with release documentation and MIT licensing finalized.

@@ -36,10 +36,22 @@ async def collect_once():
   from .mqtt import publish_recommendation
   for rec in all_recommendations(): publish_recommendation(rec)
  except Exception as e: msgs.append(f"Analytics/MQTT: {e}")
+ try:
+  from . import config
+  from .tankerkoenig import search
+  fuels={str(v['price_fuel'] or '').lower().replace('super_','') for v in rows("SELECT price_fuel FROM vehicles WHERE active=1 AND price_source='tankerkoenig'")}
+  for fuel in fuels:
+   if fuel in ('e5','e10','diesel'):await search(fuel,config.TANKERKOENIG_LAT,config.TANKERKOENIG_LNG,config.TANKERKOENIG_RADIUS)
+ except Exception as e:msgs.append(f"Tankerkönig Auto: {e}")
+ try:
+  from .vehicle_prices import all_vehicle_prices
+  from .mqtt import publish_vehicle_analysis
+  for item in await all_vehicle_prices():publish_vehicle_analysis(item)
+ except Exception as e:msgs.append(f"Fahrzeuganalyse/MQTT: {e}")
  return {"ok":ok,"errors":err,"messages":msgs}
 async def collector_loop(stop):
  while not stop.is_set():
   try:await collect_once()
   except Exception as e:print("Collector:",e,flush=True)
-  try:await asyncio.wait_for(stop.wait(),timeout=POLL_INTERVAL)
+  try:await asyncio.wait_for(stop.wait(),timeout=int((rows("SELECT value FROM settings WHERE key='collector_interval_seconds'") or [{"value":POLL_INTERVAL}])[0]["value"]))
   except asyncio.TimeoutError:pass

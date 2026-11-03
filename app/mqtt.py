@@ -24,3 +24,11 @@ def publish_recommendation(r):
  slug=r['fuel']['slug'];attrs={'value':r['recommendation'],'current_price':r['current_price'],'best_station':r['best_station'],'expected_low':r['expected_low'],'remaining_ct':r['remaining_ct'],'saving_per_tank':r['saving_per_tank'],'tank_liters':r['tank_liters'],'best_window':r['best_window'],'confidence':r['confidence'],'data_days':r['data_days'],'economic_station':r['economic_station']['name']}
  _pub_sensor(f'{slug}_refuel_recommendation',f"{r['fuel']['name']} Tankempfehlung",attrs,icon='mdi:gas-station-outline')
  _pub_sensor(f'{slug}_best_price',f"{r['fuel']['name']} bester Preis",{'value':r['current_price'],'station':r['best_station']},unit='€/L')
+
+def publish_vehicle_analysis(r):
+ if not r.get('current'):return
+ import re
+ uid=re.sub(r'[^a-z0-9]+','_',r['name'].lower()).strip('_');c=r['current'];attrs={'vehicle':r['name'],'station':c['station'],'price':c['price'],'distance_km':c['route_distance_km'],'duration_min':c['route_duration_min'],'refill_liters':r['fill_liters'],'effective_cost':c['effective_cost'],'advantage':r['advantage'],'recommendation':r['recommendation'],'notify_worthy':r['notify_worthy'],'price_age_min':c['price_age_min']}
+ _pub_sensor(f'{uid}_fuel_recommendation',f"{r['name']} Tankempfehlung",{**attrs,'value':r['recommendation']},icon='mdi:gas-station-outline')
+ _pub_sensor(f'{uid}_effective_cost',f"{r['name']} effektive Tankkosten",{**attrs,'value':c['effective_cost']},unit='€',icon='mdi:cash')
+ _pub_sensor(f'{uid}_station_advantage',f"{r['name']} Tankstellen-Vorteil",{**attrs,'value':r['advantage']},unit='€',icon='mdi:cash-plus')

@@ -31,6 +31,7 @@ def init_db():
  migrate_v062()
  migrate_v070()
  migrate_v073()
+ migrate_v092()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -125,3 +126,13 @@ def migrate_v073():
             if name not in cols:c.execute(f'ALTER TABLE stations ADD COLUMN {name} {sql}')
         c.execute("""CREATE TABLE IF NOT EXISTS osrm_route_cache(origin_lat REAL NOT NULL,origin_lng REAL NOT NULL,dest_lat REAL NOT NULL,dest_lng REAL NOT NULL,distance_km REAL NOT NULL,duration_min REAL NOT NULL,retrieved_at TEXT NOT NULL,PRIMARY KEY(origin_lat,origin_lng,dest_lat,dest_lng))""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_osrm_cache_time ON osrm_route_cache(retrieved_at)")
+
+
+def migrate_v092():
+    with connect() as c:
+        cols={r['name'] for r in c.execute('PRAGMA table_info(vehicles)')}
+        for name,sql in {'notify_enabled':'INTEGER NOT NULL DEFAULT 1','notify_min_advantage':'REAL NOT NULL DEFAULT 2.0','notify_max_distance_km':'REAL NOT NULL DEFAULT 15.0'}.items():
+            if name not in cols:c.execute(f'ALTER TABLE vehicles ADD COLUMN {name} {sql}')
+        c.execute("""CREATE TABLE IF NOT EXISTS assistant_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,started_at TEXT NOT NULL,finished_at TEXT,status TEXT NOT NULL DEFAULT 'running',vehicles INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,message TEXT NOT NULL DEFAULT '')""")
+        defaults={'collector_interval_seconds':'300','tankerkoenig_interval_seconds':'600','max_price_age_min':'60','osrm_cache_hours':'24','osrm_route_candidates':'5','top5_chart_days':'30'}
+        for k,v in defaults.items():c.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)',(k,v))

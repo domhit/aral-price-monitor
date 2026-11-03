@@ -18,14 +18,21 @@ async def lifespan(app):
 app=FastAPI(title="Aral Price Monitor",version=VERSION,lifespan=lifespan);app.mount("/static",StaticFiles(directory="app/static"),name="static");tpl=Jinja2Templates(directory="app/templates")
 def common():return {"version":VERSION}
 @app.get("/",response_class=HTMLResponse)
-def dashboard(request:Request):
- states=rows("SELECT s.name station_name,s.address,f.name fuel_name,f.slug,ss.price,ss.price_changed_at FROM station_state ss JOIN stations s ON s.id=ss.station_id JOIN fuels f ON f.id=ss.fuel_id ORDER BY f.name,ss.price")
- last=rows("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1")
- return tpl.TemplateResponse("dashboard.html",{"request":request,"states":states,"last_run":last[0] if last else None,"poll":POLL_INTERVAL,**common()})
+async def dashboard(request:Request,lat:float|None=None,lng:float|None=None):
+ from .vehicle_prices import all_vehicle_prices
+ from . import config
+ used_lat=lat if lat is not None else config.TANKERKOENIG_LAT;used_lng=lng if lng is not None else config.TANKERKOENIG_LNG
+ items=await all_vehicle_prices(used_lat,used_lng)
+ last=(rows("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1") or [None])[0]
+ return tpl.TemplateResponse("dashboard.html",{"request":request,"items":items,"lat":used_lat,"lng":used_lng,"location_mode":"aktuell" if lat is not None else "zuhause","last_run":last,"poll":POLL_INTERVAL,**common()})
 @app.get("/charts",response_class=HTMLResponse)
-def charts(request:Request):
+def charts(request:Request,days:int=30):
  fuels=rows("SELECT DISTINCT f.* FROM fuels f JOIN station_fuels sf ON sf.fuel_id=f.id WHERE sf.active=1 ORDER BY f.name")
- return tpl.TemplateResponse("charts.html",{"request":request,"fuels":fuels,**common()})
+ return tpl.TemplateResponse("charts.html",{"request":request,"fuels":fuels,"tk_days":max(7,min(90,days)),**common()})
+@app.get('/api/tankerkoenig/top5')
+def api_tk_top5(days:int=30,fuel:str='e10'):
+ from .tk_charts import top5
+ return top5(days,fuel)
 @app.get("/api/history/{slug}")
 def api_history(slug:str,days:int=30):
  p=history_payload(slug,max(1,min(days,90)))
@@ -87,7 +94,9 @@ def delete_station(id:int):
  return RedirectResponse("/stations",303)
 @app.get("/vehicles",response_class=HTMLResponse)
 def vehicles_page(request:Request,edit:int|None=None):
- vs=rows("SELECT v.*,f.name fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id ORDER BY v.name");fuels=rows("SELECT * FROM fuels ORDER BY name");editing=rows("SELECT * FROM vehicles WHERE id=?",(edit,))[0] if edit and rows("SELECT 1 FROM vehicles WHERE id=?",(edit,)) else None
+ vs=rows("SELECT v.*,f.name fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id ORDER BY v.name")
+ from .vehicle_stats import vehicle_stats
+ for v in vs:v['stats']=vehicle_stats(v['id']);fuels=rows("SELECT * FROM fuels ORDER BY name");editing=rows("SELECT * FROM vehicles WHERE id=?",(edit,))[0] if edit and rows("SELECT 1 FROM vehicles WHERE id=?",(edit,)) else None
  return tpl.TemplateResponse("vehicles.html",{"request":request,"vehicles":vs,"fuels":fuels,"editing":editing,**common()})
 @app.post("/vehicles/save")
 def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1"),price_source:str=Form("aral"),price_fuel:str=Form("")):
@@ -119,9 +128,9 @@ def settings_page(request:Request):
     return tpl.TemplateResponse('settings.html',{'request':request,'settings':settings,'stats':stats,'last':last,**common()})
 
 @app.post('/settings')
-def settings_save(analysis_days:int=Form(...),now_threshold_ct:float=Form(...),okay_threshold_ct:float=Form(...),wait_threshold_ct:float=Form(...),min_days:int=Form(...)):
+def settings_save(analysis_days:int=Form(...),now_threshold_ct:float=Form(...),okay_threshold_ct:float=Form(...),wait_threshold_ct:float=Form(...),min_days:int=Form(...),collector_interval_seconds:int=Form(300),tankerkoenig_interval_seconds:int=Form(600),max_price_age_min:int=Form(60),osrm_cache_hours:int=Form(24),osrm_route_candidates:int=Form(5),top5_chart_days:int=Form(30)):
     from .admin import save_settings
-    save_settings({'analysis_days':max(7,min(90,analysis_days)),'now_threshold_ct':now_threshold_ct,'okay_threshold_ct':okay_threshold_ct,'wait_threshold_ct':wait_threshold_ct,'min_days':max(1,min(30,min_days))});return RedirectResponse('/settings?saved=1',303)
+    save_settings({'analysis_days':max(7,min(90,analysis_days)),'now_threshold_ct':now_threshold_ct,'okay_threshold_ct':okay_threshold_ct,'wait_threshold_ct':wait_threshold_ct,'min_days':max(1,min(30,min_days)),'collector_interval_seconds':max(60,collector_interval_seconds),'tankerkoenig_interval_seconds':max(300,tankerkoenig_interval_seconds),'max_price_age_min':max(5,max_price_age_min),'osrm_cache_hours':max(1,osrm_cache_hours),'osrm_route_candidates':max(1,min(10,osrm_route_candidates)),'top5_chart_days':max(7,min(90,top5_chart_days))});return RedirectResponse('/settings?saved=1',303)
 
 @app.get('/backup/database')
 def backup_database():
@@ -146,6 +155,11 @@ def vacuum_database():
     import sqlite3
     from .config import DB_PATH
     c=sqlite3.connect(DB_PATH);c.execute('VACUUM');c.close();return RedirectResponse('/settings?vacuum=1',303)
+
+@app.get('/api/nearby-station')
+def api_nearby_station(lat:float,lng:float,vehicle_id:int):
+ from .nearby import match
+ return match(lat,lng,vehicle_id)
 
 @app.get('/refuels',response_class=HTMLResponse)
 def refuels_page(request:Request,edit:int|None=None):

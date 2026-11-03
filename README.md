@@ -137,3 +137,7 @@ Road distance and duration are calculated with OSRM. The default configuration u
 ## License
 
 The application source code is released under the **MIT License**. See `LICENSE`. External data and services remain subject to their own terms and licenses.
+
+
+## v0.9.2
+Consolidated navigation, a home/current-location overview, per-vehicle analysis, Tankerkönig E10 Top-5 charts, vehicle KPIs, GPS station matching for refueling entry and configurable update intervals.
