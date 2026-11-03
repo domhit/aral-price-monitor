@@ -39,9 +39,9 @@ git push origin v0.5.6
 - Tankerkönig fuel aliases super_e10/super_e5 map to stored e10/e5 history.
 
 
-#### V0.7.2
-- OSRM road routing for Tankerkoenig candidates, returning actual driving distance and duration.
-- Default Docker location plus temporary browser geolocation for mobile recommendations.
-- 7/30-day price averages, gross saving, round-trip fuel cost and net saving.
-- Route cache (24 h default) and maximum 5 routed candidates to keep external demo-server traffic low.
-- External data attribution: Tankerkoenig/MTS-K, Spritmonitor API, OSRM and OpenStreetMap/ODbL.
+### V0.7.3
+- OSRM routing for both Tankerkoenig and Aral stations.
+- Aral stations gain latitude/longitude fields.
+- Coordinates can be copied from cached Tankerkoenig station data via name/address matching or entered manually.
+- Coordinate source and Tankerkoenig station ID are stored with the Aral station.
+- Default location and mobile browser geolocation remain supported.

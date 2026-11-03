@@ -59,6 +59,28 @@ def save_station(id:str=Form(""),url:str=Form(...),name:str=Form(...),address:st
 def toggle_station(id:int):
  with connect() as c:c.execute("UPDATE stations SET active=1-active WHERE id=?",(id,))
  return RedirectResponse("/stations",303)
+@app.post("/stations/{id}/coordinates")
+def station_coordinates(id:int,latitude:str=Form(""),longitude:str=Form("")):
+ lat=float(latitude) if latitude.strip() else None;lng=float(longitude) if longitude.strip() else None
+ with connect() as c:c.execute("UPDATE stations SET latitude=?,longitude=?,coordinate_source=? WHERE id=?",(lat,lng,'manual' if lat is not None and lng is not None else None,id))
+ return RedirectResponse("/stations",303)
+@app.post("/stations/{id}/match-tankerkoenig")
+def station_match_tankerkoenig(id:int):
+ st=(rows("SELECT * FROM stations WHERE id=?",(id,)) or [None])[0]
+ if not st:return RedirectResponse("/stations?coord_error=Station+nicht+gefunden",303)
+ # Match primarily normalized station name/address against already cached TK stations; no extra external request required.
+ cand=rows("SELECT station_external_id,station_name,street,place,latitude,longitude,distance FROM tankerkoenig_prices WHERE latitude IS NOT NULL AND longitude IS NOT NULL ORDER BY retrieved_at DESC")
+ import re
+ def norm(x):return re.sub(r'[^a-z0-9]+','',str(x or '').lower().replace('ß','ss'))
+ sn,sa=norm(st['name']),norm(st['address']);best=None;score=-1
+ seen=set()
+ for x in cand:
+  if x['station_external_id'] in seen:continue
+  seen.add(x['station_external_id']);n,a=norm(x['station_name']),norm((x.get('street') or '')+' '+(x.get('place') or ''));sc=(3 if sn and (sn in n or n in sn) else 0)+(2 if sa and a and (sa in a or a in sa) else 0)
+  if sc>score:score,best=sc,x
+ if not best or score<3:return RedirectResponse("/stations?coord_error=Keine+eindeutige+Tankerkönig-Zuordnung",303)
+ with connect() as c:c.execute("UPDATE stations SET latitude=?,longitude=?,tankerkoenig_station_id=?,coordinate_source='tankerkoenig' WHERE id=?",(best['latitude'],best['longitude'],best['station_external_id'],id))
+ return RedirectResponse("/stations?coords=1",303)
 @app.post("/stations/{id}/delete")
 def delete_station(id:int):
  with connect() as c:c.execute("DELETE FROM stations WHERE id=?",(id,))
@@ -85,8 +107,7 @@ async def vehicle_prices(request:Request,lat:float|None=None,lng:float|None=None
  from .vehicle_prices import all_vehicle_prices
  from . import config
  used_lat=lat if lat is not None else config.TANKERKOENIG_LAT;used_lng=lng if lng is not None else config.TANKERKOENIG_LNG
- items=await all_vehicle_prices(used_lat,used_lng,True)
- return tpl.TemplateResponse("vehicle_prices.html",{"request":request,"items":items,"lat":used_lat,"lng":used_lng,**common()})
+ return tpl.TemplateResponse("vehicle_prices.html",{"request":request,"items":await all_vehicle_prices(used_lat,used_lng),"lat":used_lat,"lng":used_lng,**common()})
 
 @app.get("/health")
 def health():return {"status":"ok","version":VERSION,"last_run":(rows("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1") or [None])[0]}
