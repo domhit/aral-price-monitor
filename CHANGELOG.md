@@ -2,6 +2,20 @@
 
 All notable project changes are summarized here.
 
+## [0.9.0] - 2026-11-03
+
+### Added
+- Automatic Tankerkönig refresh for fuels used by active Tankerkönig vehicles at the default location.
+- Tank Assistant dashboard with per-vehicle best station, route, effective cost, data age and alert readiness.
+- Home Assistant MQTT Discovery entities for recommendation, best price, station distance, effective cost and station advantage.
+- Per-vehicle alert thresholds: minimum current advantage and maximum route distance.
+- Price-age validation for automated recommendation readiness.
+
+### Changed
+- Collector now refreshes the Tank Assistant after the normal Aral price cycle.
+- MQTT device metadata follows the application release instead of the legacy v0.3 model.
+
+
 ## [0.7.5] - 2026-11-03
 
 First public release. Functionally based on the previously tested stable baseline, with release documentation and MIT licensing finalized.

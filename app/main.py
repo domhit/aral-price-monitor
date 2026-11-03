@@ -90,11 +90,11 @@ def vehicles_page(request:Request,edit:int|None=None):
  vs=rows("SELECT v.*,f.name fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id ORDER BY v.name");fuels=rows("SELECT * FROM fuels ORDER BY name");editing=rows("SELECT * FROM vehicles WHERE id=?",(edit,))[0] if edit and rows("SELECT 1 FROM vehicles WHERE id=?",(edit,)) else None
  return tpl.TemplateResponse("vehicles.html",{"request":request,"vehicles":vs,"fuels":fuels,"editing":editing,**common()})
 @app.post("/vehicles/save")
-def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1"),price_source:str=Form("aral"),price_fuel:str=Form("")):
+def save_vehicle(id:str=Form(""),name:str=Form(...),fuel_id:int=Form(...),consumption:float=Form(...),tank_capacity:str=Form(""),season_start:str=Form(...),season_end:str=Form(...),active:str=Form("1"),price_source:str=Form("aral"),price_fuel:str=Form(""),notify_enabled:str=Form("1"),notify_min_advantage:float=Form(2.0),notify_max_distance_km:float=Form(15.0)):
  tank=float(tank_capacity) if tank_capacity.strip() else None;act=1 if active=="1" else 0
  with connect() as c:
-  if id:c.execute("UPDATE vehicles SET name=?,fuel_id=?,consumption=?,tank_capacity=?,season_start=?,season_end=?,active=?,price_source=?,price_fuel=? WHERE id=?",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,price_source,price_fuel.strip().lower(),int(id)))
-  else:c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active,price_source,price_fuel) VALUES(?,?,?,?,?,?,?,?,?)",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,price_source,price_fuel.strip().lower()))
+  if id:c.execute("UPDATE vehicles SET name=?,fuel_id=?,consumption=?,tank_capacity=?,season_start=?,season_end=?,active=?,price_source=?,price_fuel=?,notify_enabled=?,notify_min_advantage=?,notify_max_distance_km=? WHERE id=?",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,price_source,price_fuel.strip().lower(),1 if notify_enabled=="1" else 0,notify_min_advantage,notify_max_distance_km,int(id)))
+  else:c.execute("INSERT INTO vehicles(name,fuel_id,consumption,tank_capacity,season_start,season_end,active,price_source,price_fuel,notify_enabled,notify_min_advantage,notify_max_distance_km) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(name.strip(),fuel_id,consumption,tank,season_start,season_end,act,price_source,price_fuel.strip().lower(),1 if notify_enabled=="1" else 0,notify_min_advantage,notify_max_distance_km))
  return RedirectResponse("/vehicles",303)
 @app.post("/vehicles/{id}/delete")
 def delete_vehicle(id:int):
@@ -108,6 +108,16 @@ async def vehicle_prices(request:Request,lat:float|None=None,lng:float|None=None
  from . import config
  used_lat=lat if lat is not None else config.TANKERKOENIG_LAT;used_lng=lng if lng is not None else config.TANKERKOENIG_LNG
  return tpl.TemplateResponse("vehicle_prices.html",{"request":request,"items":await all_vehicle_prices(used_lat,used_lng),"lat":used_lat,"lng":used_lng,**common()})
+
+@app.get("/tank-assistant",response_class=HTMLResponse)
+async def tank_assistant(request:Request):
+ from .assistant import run_assistant
+ result=await run_assistant()
+ return tpl.TemplateResponse("tank_assistant.html",{"request":request,"result":result,"items":result['items'],**common()})
+@app.post("/tank-assistant/refresh")
+async def tank_assistant_refresh():
+ from .assistant import run_assistant
+ await run_assistant();return RedirectResponse('/tank-assistant',303)
 
 @app.get("/health")
 def health():return {"status":"ok","version":VERSION,"last_run":(rows("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1") or [None])[0]}

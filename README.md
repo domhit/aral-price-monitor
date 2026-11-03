@@ -1,6 +1,6 @@
 # Aral Price Monitor
 
-Self-hosted fuel-price and refueling dashboard for Docker/Portainer. Version **0.7.5** is the first public release and the current stable baseline.
+Self-hosted fuel-price and refueling dashboard for Docker/Portainer. Version **0.9.0** adds the automated Tank Assistant on top of the first stable release baseline.
 
 ## Highlights
 
@@ -137,3 +137,8 @@ Road distance and duration are calculated with OSRM. The default configuration u
 ## License
 
 The application source code is released under the **MIT License**. See `LICENSE`. External data and services remain subject to their own terms and licenses.
+
+
+## v0.9.0 Tank Assistant
+
+The collector can now refresh Tankerkönig prices required by active vehicles at the configured default location, calculate current per-vehicle station economics and publish Home Assistant MQTT Discovery sensors. The new Tank-Assistent page shows best station, road distance/time, typical refill amount, effective cost, current advantage and data age. Per-vehicle alert thresholds control when a recommendation is marked as notification-worthy.

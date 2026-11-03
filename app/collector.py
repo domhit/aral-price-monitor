@@ -36,6 +36,13 @@ async def collect_once():
   from .mqtt import publish_recommendation
   for rec in all_recommendations(): publish_recommendation(rec)
  except Exception as e: msgs.append(f"Analytics/MQTT: {e}")
+ try:
+  from . import config
+  if config.TANK_ASSISTANT_ENABLED:
+   from .assistant import run_assistant
+   a=await run_assistant()
+   if a['errors']:msgs.extend([f"Assistant: {x}" for x in a['errors']])
+ except Exception as e: msgs.append(f"Tank-Assistent: {e}")
  return {"ok":ok,"errors":err,"messages":msgs}
 async def collector_loop(stop):
  while not stop.is_set():
