@@ -2,6 +2,14 @@
 
 All notable project changes are summarized here.
 
+## [0.9.3] - 2026-11-04
+- Tankerkönig background collection starts immediately and refreshes every 10 minutes.
+- Candidate routing uses the union of the five cheapest and five nearest stations.
+- Up to 10 candidates are calculated with one OSRM table request and cached.
+- Current-location switch restored in Analyse je Fahrzeug.
+- Combined vehicle KPI cards restored.
+
+
 ## [0.7.5] - 2026-11-03
 
 First public release. Functionally based on the previously tested stable baseline, with release documentation and MIT licensing finalized.

@@ -130,5 +130,5 @@ def migrate_v073():
 
 def migrate_v0921():
     with connect() as c:
-        defaults={'collector_interval_seconds':'300','tankerkoenig_interval_seconds':'600','max_price_age_min':'60','osrm_cache_hours':'24','osrm_route_candidates':'5','top5_chart_days':'30'}
+        defaults={'collector_interval_seconds':'300','tankerkoenig_interval_seconds':'600','max_price_age_min':'60','osrm_cache_hours':'24','osrm_route_candidates':'10','top5_chart_days':'30'}
         for k,v in defaults.items():c.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)',(k,v))

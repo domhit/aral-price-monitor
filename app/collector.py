@@ -43,3 +43,24 @@ async def collector_loop(stop):
   except Exception as e:print("Collector:",e,flush=True)
   try:await asyncio.wait_for(stop.wait(),timeout=POLL_INTERVAL)
   except asyncio.TimeoutError:pass
+
+async def tankerkoenig_collect_once():
+ from . import config
+ if not config.TANKERKOENIG_ENABLED:return {'ok':0,'errors':['Tankerkönig deaktiviert']}
+ from .tankerkoenig import search
+ aliases={'super_e10':'e10','supere10':'e10','super_e5':'e5','supere5':'e5'}
+ fuels={aliases.get(str(v['price_fuel'] or '').lower(),str(v['price_fuel'] or '').lower()) for v in __import__('app.db',fromlist=['rows']).rows("SELECT DISTINCT price_fuel FROM vehicles WHERE active=1 AND price_source='tankerkoenig'")}
+ ok=0;errors=[]
+ for fuel in sorted(fuels):
+  if fuel not in ('e5','e10','diesel'):continue
+  try:await search(fuel,config.TANKERKOENIG_LAT,config.TANKERKOENIG_LNG,config.TANKERKOENIG_RADIUS);ok+=1
+  except Exception as e:errors.append(f'{fuel}: {e}')
+ return {'ok':ok,'errors':errors}
+
+async def tankerkoenig_loop(stop):
+ # Immediate initial refresh so dashboards work without opening the Tankerkönig page.
+ while not stop.is_set():
+  try:await tankerkoenig_collect_once()
+  except Exception as e:print('Tankerkönig Collector:',e,flush=True)
+  try:await asyncio.wait_for(stop.wait(),timeout=600)
+  except asyncio.TimeoutError:pass

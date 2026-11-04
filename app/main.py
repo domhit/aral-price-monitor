@@ -7,14 +7,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from .config import VERSION,POLL_INTERVAL
 from .db import init_db,rows,connect
-from .collector import collector_loop,collect_once
+from .collector import collector_loop,collect_once,tankerkoenig_loop
 from .analytics import history_payload,all_recommendations,recommendation_for_fuel
-stop=asyncio.Event();task=None
+stop=asyncio.Event();task=None;tk_task=None
 @asynccontextmanager
 async def lifespan(app):
- global task
- init_db();stop.clear();task=asyncio.create_task(collector_loop(stop));yield;stop.set()
+ global task,tk_task
+ init_db();stop.clear();task=asyncio.create_task(collector_loop(stop));tk_task=asyncio.create_task(tankerkoenig_loop(stop));yield;stop.set()
  if task:await task
+ if tk_task:await tk_task
 app=FastAPI(title="Aral Price Monitor",version=VERSION,lifespan=lifespan);app.mount("/static",StaticFiles(directory="app/static"),name="static");tpl=Jinja2Templates(directory="app/templates")
 def common():return {"version":VERSION}
 @app.get("/",response_class=HTMLResponse)
