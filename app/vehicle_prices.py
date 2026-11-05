@@ -51,4 +51,9 @@ async def vehicle_price(v,lat=None,lng=None):
  if not good:return {**v,'current':None,'candidates':out,'recommendation':'Keine belastbare Route','level':'bad','fill_liters':fill,'fill_source':source,'refuel_count':count}
  cur=good[0];base=good[1] if len(good)>1 else cur;adv=max(0,base['effective_cost']-cur['effective_cost']);a7,a30=_avg(v,7),_avg(v,30);expected=min(float(x['price']) for x in all_items)
  return {**v,'current':cur,'baseline':base,'candidates':sorted(out,key=lambda x:(x['effective_cost'] is None,x['effective_cost'] or 999)),'advantage':round(adv,2),'avg7':a7,'avg30':a30,'fill_liters':round(fill,2),'fill_source':source,'refuel_count':count,'recommendation':'Beste aktuelle Wahl','level':'okay','expected_low':expected,'remaining_ct':round(max(0,float(cur['price'])-expected)*100,1),'best_window':'Abends meist günstiger','candidate_strategy':'5 günstigste + 5 nächste'}
-async def all_vehicle_prices(lat=None,lng=None):return [await vehicle_price(v,lat,lng) for v in rows('SELECT v.*,f.name fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id WHERE v.active=1 ORDER BY v.name')]
+async def all_vehicle_prices(lat=None,lng=None,season_only=True):
+ vehicles=rows('SELECT v.*,f.name fuel_name FROM vehicles v JOIN fuels f ON f.id=v.fuel_id WHERE v.active=1 ORDER BY v.name')
+ if season_only:
+  from .seasons import seasonal_vehicles
+  vehicles=seasonal_vehicles(vehicles)
+ return [await vehicle_price(v,lat,lng) for v in vehicles]

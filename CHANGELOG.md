@@ -2,6 +2,13 @@
 
 All notable project changes are summarized here.
 
+## [0.9.6] - 2026-11-05
+- Season-filter Overview, Charts and Analyse je Fahrzeug by active vehicle season.
+- Keep collectors and histories running for all vehicles and fuels.
+- Add optional show-all toggles for Charts and Analyse je Fahrzeug.
+- Harmonize Tankerkönig Top-5 chart styling with axes, grid, date labels and legend.
+
+
 ## [0.9.5] - 2026-11-05
 - Restore full Spritmonitor fueling metadata import.
 - Existing synced entries are enriched on the next read-only sync.

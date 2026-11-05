@@ -26,9 +26,14 @@ async def dashboard(request:Request,lat:float|None=None,lng:float|None=None):
  a=lat if lat is not None else config.TANKERKOENIG_LAT;b=lng if lng is not None else config.TANKERKOENIG_LNG
  return tpl.TemplateResponse("dashboard.html",{"request":request,"items":await all_vehicle_prices(a,b),"location_mode":"aktuell" if lat is not None else "zuhause",**common()})
 @app.get("/charts",response_class=HTMLResponse)
-def charts(request:Request,days:int=30):
+def charts(request:Request,days:int=30,all_fuels:int=0):
  fuels=rows("SELECT DISTINCT f.* FROM fuels f JOIN station_fuels sf ON sf.fuel_id=f.id WHERE sf.active=1 ORDER BY f.name")
- return tpl.TemplateResponse("charts.html",{"request":request,"fuels":fuels,"tk_days":max(7,min(90,days)),**common()})
+ active_vehicles=rows("SELECT v.*,f.slug fuel_slug FROM vehicles v JOIN fuels f ON f.id=v.fuel_id WHERE v.active=1")
+ from .seasons import seasonal_vehicles
+ seasonal=seasonal_vehicles(active_vehicles);active_slugs={v.get('price_fuel') or v.get('fuel_slug') for v in seasonal}
+ if not all_fuels:fuels=[f for f in fuels if f['slug'] in active_slugs]
+ show_tk_e10=bool(all_fuels or any(str(v.get('price_fuel') or '').lower() in ('e10','super_e10','supere10') for v in seasonal))
+ return tpl.TemplateResponse("charts.html",{"request":request,"fuels":fuels,"tk_days":max(7,min(90,days)),"season_only":not bool(all_fuels),"show_tk_e10":show_tk_e10,**common()})
 
 @app.get('/api/tankerkoenig/top5')
 def tk_top5(days:int=30):
@@ -114,11 +119,11 @@ def delete_vehicle(id:int):
 @app.post("/collect")
 async def collect():await collect_once();return RedirectResponse("/",303)
 @app.get("/vehicle-prices",response_class=HTMLResponse)
-async def vehicle_prices(request:Request,lat:float|None=None,lng:float|None=None):
+async def vehicle_prices(request:Request,lat:float|None=None,lng:float|None=None,all_vehicles:int=0):
  from .vehicle_prices import all_vehicle_prices
  from . import config
  used_lat=lat if lat is not None else config.TANKERKOENIG_LAT;used_lng=lng if lng is not None else config.TANKERKOENIG_LNG
- return tpl.TemplateResponse("vehicle_prices.html",{"request":request,"items":await all_vehicle_prices(used_lat,used_lng),"lat":used_lat,"lng":used_lng,**common()})
+ return tpl.TemplateResponse("vehicle_prices.html",{"request":request,"items":await all_vehicle_prices(used_lat,used_lng,not bool(all_vehicles)),"lat":used_lat,"lng":used_lng,"season_only":not bool(all_vehicles),**common()})
 
 @app.get("/health")
 def health():return {"status":"ok","version":VERSION,"last_run":(rows("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1") or [None])[0]}
