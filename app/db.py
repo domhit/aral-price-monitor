@@ -33,6 +33,7 @@ def init_db():
  migrate_v073()
  migrate_v0921()
  migrate_v094()
+ migrate_v095()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -146,3 +147,8 @@ def migrate_v094():
             CASE WHEN length(refueled_at)>=16 THEN 'T'||substr(refueled_at,12,5) ELSE 'T00:00' END
             WHERE refueled_at GLOB '[0-9][0-9].[0-9][0-9].[0-9][0-9][0-9][0-9]*'""")
         c.execute('CREATE INDEX IF NOT EXISTS idx_refuels_vehicle_date ON refuels(vehicle_id,refueled_at DESC,id DESC)')
+
+
+def migrate_v095():
+    with connect() as c:
+        c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','0.9.5')")

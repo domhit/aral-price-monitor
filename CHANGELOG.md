@@ -2,6 +2,13 @@
 
 All notable project changes are summarized here.
 
+## [0.9.5] - 2026-11-05
+- Restore full Spritmonitor fueling metadata import.
+- Existing synced entries are enriched on the next read-only sync.
+- Import trip, consumption, tire type, driving style, route type, BC values, note, country and coordinates.
+- Show consumption, tire/driving style and BC values in Tankungen and vehicle details.
+
+
 ## [0.9.3] - 2026-11-04
 - Tankerkönig background collection starts immediately and refreshes every 10 minutes.
 - Candidate routing uses the union of the five cheapest and five nearest stations.

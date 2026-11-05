@@ -40,11 +40,67 @@ def normalize_date(value):
   except ValueError:pass
  try:return datetime.fromisoformat(raw.replace('Z','+00:00')).strftime('%Y-%m-%dT%H:%M')
  except ValueError:return raw[:16]
+def _tokens(value):
+ if isinstance(value,list):
+  raw=[]
+  for x in value:
+   if isinstance(x,dict):raw.extend([str(v) for v in x.values() if v not in (None,'')])
+   else:raw.append(str(x))
+  value=','.join(raw)
+ if isinstance(value,dict):value=','.join(str(v) for v in value.values() if v not in (None,''))
+ return {x.strip().lower().replace(' ','').replace('_','') for x in str(value or '').replace(';',',').replace('|',',').split(',') if x.strip()}
+def _attribute_codes(value):
+ t=_tokens(value);tire=drive=None
+ if t & {'summertires','summertire','summer','sommerreifen'}:tire=1
+ elif t & {'wintertires','wintertire','winter','winterreifen'}:tire=2
+ elif t & {'allyeartires','allyear','allseason','ganzjahresreifen'}:tire=3
+ if t & {'slow','economical','eco','sparsam','bewusstsparsam'}:drive=1
+ elif t & {'normal'}:drive=2
+ elif t & {'fast','sport','sportlich','flott'}:drive=3
+ return tire,drive
+def _route_code(value):
+ t=_tokens(value);code=0
+ if t & {'autobahn','highway','motorway'}:code|=2
+ if t & {'city','stadt','urban'}:code|=4
+ if t & {'land','landstrasse','country','rural'}:code|=8
+ return code or None
+def _tank_type(value):
+ if value in (None,''):return None
+ if isinstance(value,(int,float)):
+  n=int(value);return n if n in (0,1,2,3) else None
+ x=str(value).lower().replace('_','').replace(' ','')
+ return {'invalid':0,'full':1,'voll':1,'notfull':2,'partial':2,'teil':2,'first':3,'erst':3}.get(x)
 def normalize(f):
  liters=num(pick(f,'quantity','liters','amount'));total=num(pick(f,'cost','costs','total_cost','total'));price=num(pick(f,'price','price_per_unit','unitprice'))
  if price is None and total is not None and liters:price=total/liters
  if total is None and price is not None and liters:total=price*liters
- return {'external_id':str(pick(f,'id','fueling_id','fuelingId') or '') or None,'refueled_at':normalize_date(pick(f,'date','datetime','timestamp')),'odometer':num(pick(f,'odometer','mileage','km')),'liters':liters,'total_cost':total,'price_per_liter':price,'tank_type':pick(f,'type','tank_type','fueling_type'),'spritmonitor_fuel_code':pick(f,'fuelsortid','fuel','fuel_id','fuelType'),'station_brand':str(pick(f,'stationname','station','station_name','brand') or ''),'location':str(pick(f,'location','place','city') or '')}
+ attributes=pick(f,'attributes','attribute','properties')
+ tire,drive=_attribute_codes(attributes)
+ streets=pick(f,'streets','streettypes','routes','route')
+ return {
+  'external_id':str(pick(f,'id','fueling_id','fuelingId') or '') or None,
+  'refueled_at':normalize_date(pick(f,'date','datetime','timestamp')),
+  'odometer':num(pick(f,'odometer','mileage','km')),
+  'trip_km':num(pick(f,'trip','trip_km','distance')),
+  'liters':liters,'total_cost':total,'price_per_liter':price,
+  'tank_type':_tank_type(pick(f,'type','tank_type','fueling_type')),
+  'spritmonitor_fuel_code':pick(f,'fuelsortid','fuel','fuel_id','fuelType'),
+  'note':str(pick(f,'note','comment','remarks') or ''),
+  'reported_consumption':num(pick(f,'consumption','reported_consumption','consumption_value')),
+  'bc_consumption':num(pick(f,'bc_consumption','bcConsumption','boardcomputer_consumption')),
+  'bc_fuel_quantity':num(pick(f,'bc_quantity','bc_fuel_quantity','bcQuantity')),
+  'bc_speed':num(pick(f,'bc_speed','bcSpeed','boardcomputer_speed')),
+  'station_brand':str(pick(f,'stationname','station','station_name','brand') or ''),
+  'country':str(pick(f,'country','countrycode') or ''),
+  'region':str(pick(f,'region','area') or ''),
+  'location':str(pick(f,'location','place','city') or ''),
+  'latitude':num(pick(f,'position_lat','latitude','lat')),
+  'longitude':num(pick(f,'position_long','longitude','lng','lon')),
+  'tire_code':tire,'driving_style_code':drive,'route_code':_route_code(streets),
+  'attributes':json.dumps(attributes,ensure_ascii=False,default=str) if attributes not in (None,'') else None,
+  'streets':json.dumps(streets,ensure_ascii=False,default=str) if streets not in (None,'') else None,
+ }
+
 def fp(vid,date,odo,liters,total):return hashlib.sha256(f'{vid}|{str(date or "")[:10]}|{odo}|{round(float(liters or 0),2)}|{round(float(total or 0),2)}'.encode()).hexdigest()
 async def get_json(c,path,params=None):
  r=await c.get(BASE+path,headers=headers(),params=params,timeout=30);r.raise_for_status();return r.json()
@@ -103,15 +159,15 @@ async def pull_all():
        if not open_conflict:c.execute("INSERT INTO sync_conflicts(refuel_id,detected_at,local_json,remote_json) VALUES(?,?,?,?)",(existing['id'],now,json.dumps(local_cmp,ensure_ascii=False),json.dumps(remote_cmp,ensure_ascii=False)))
        c.execute("UPDATE refuels SET sync_status='conflict',remote_snapshot=?,last_synced_at=? WHERE id=?",(json.dumps(remote_cmp,ensure_ascii=False),now,existing['id']))
      else:
-      with connect() as c:c.execute("UPDATE refuels SET last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?",(now,json.dumps(remote_cmp,ensure_ascii=False),existing['id']))
+      with connect() as c:c.execute("""UPDATE refuels SET refueled_at=?,odometer=?,trip_km=?,liters=?,price=?,total=?,price_per_liter=?,total_cost=?,tank_type=?,spritmonitor_fuel_code=?,tire_code=?,route_code=?,driving_style_code=?,note=?,reported_consumption=?,bc_consumption=?,bc_fuel_quantity=?,bc_speed=?,station_brand=?,country=?,region=?,location=?,latitude=?,longitude=?,attributes=?,streets=?,last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?""",(x['refueled_at'],x['odometer'],x['trip_km'],x['liters'],x['price_per_liter'] or 0,x['total_cost'] or 0,x['price_per_liter'],x['total_cost'],x['tank_type'],x['spritmonitor_fuel_code'],x['tire_code'],x['route_code'],x['driving_style_code'],x['note'],x['reported_consumption'],x['bc_consumption'],x['bc_fuel_quantity'],x['bc_speed'],x['station_brand'],x['country'],x['region'],x['location'],x['latitude'],x['longitude'],x['attributes'],x['streets'],now,json.dumps(remote_cmp,ensure_ascii=False),existing['id']))
      continue
     match=byfp.get(fp(m['local_vehicle_id'],x['refueled_at'],x['odometer'],x['liters'],x['total_cost']))
     if match:
-     with connect() as c:c.execute("UPDATE refuels SET external_id=?,last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?",(x['external_id'],now,json.dumps(comparable_remote(x),ensure_ascii=False),match['id']))
+     with connect() as c:c.execute("""UPDATE refuels SET external_id=?,trip_km=?,tire_code=?,route_code=?,driving_style_code=?,note=?,reported_consumption=?,bc_consumption=?,bc_fuel_quantity=?,bc_speed=?,station_brand=?,country=?,region=?,location=?,latitude=?,longitude=?,attributes=?,streets=?,last_synced_at=?,sync_status='synced',sync_error=NULL,remote_snapshot=? WHERE id=?""",(x['external_id'],x['trip_km'],x['tire_code'],x['route_code'],x['driving_style_code'],x['note'],x['reported_consumption'],x['bc_consumption'],x['bc_fuel_quantity'],x['bc_speed'],x['station_brand'],x['country'],x['region'],x['location'],x['latitude'],x['longitude'],x['attributes'],x['streets'],now,json.dumps(comparable_remote(x),ensure_ascii=False),match['id']))
      linked+=1;continue
     if not x['liters'] or not x['refueled_at']:errors+=1;continue
     price=x['price_per_liter'] or 0;total=x['total_cost'] or round(x['liters']*price,2)
-    with connect() as c:c.execute("INSERT INTO refuels(vehicle_id,liters,price,total,refueled_at,odometer,price_per_liter,total_cost,tank_type,spritmonitor_fuel_code,station_brand,location,source,external_id,last_synced_at,sync_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'synced')",(m['local_vehicle_id'],x['liters'],price,total,x['refueled_at'],x['odometer'],price,total,x['tank_type'],x['spritmonitor_fuel_code'],x['station_brand'],x['location'],'spritmonitor_api',x['external_id'],now));inserted+=1
+    with connect() as c:c.execute("""INSERT INTO refuels(vehicle_id,liters,price,total,refueled_at,odometer,trip_km,price_per_liter,total_cost,tank_type,spritmonitor_fuel_code,tire_code,route_code,driving_style_code,note,reported_consumption,bc_consumption,bc_fuel_quantity,bc_speed,station_brand,country,region,location,latitude,longitude,attributes,streets,source,external_id,last_synced_at,sync_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'synced')""",(m['local_vehicle_id'],x['liters'],price,total,x['refueled_at'],x['odometer'],x['trip_km'],price,total,x['tank_type'],x['spritmonitor_fuel_code'],x['tire_code'],x['route_code'],x['driving_style_code'],x['note'],x['reported_consumption'],x['bc_consumption'],x['bc_fuel_quantity'],x['bc_speed'],x['station_brand'],x['country'],x['region'],x['location'],x['latitude'],x['longitude'],x['attributes'],x['streets'],'spritmonitor_api',x['external_id'],now));inserted+=1
    with connect() as c:c.execute('UPDATE spritmonitor_vehicle_map SET last_synced_at=?,history_complete=1,remote_count=? WHERE local_vehicle_id=?',(datetime.now(timezone.utc).isoformat(),len(remote),m['local_vehicle_id']))
   except Exception as e:errors+=1;messages.append(f"{m['local_name']}: {e}")
  return {'vehicles':len(maps),'remote':remote_count,'linked':linked,'inserted':inserted,'errors':errors,'messages':messages}
