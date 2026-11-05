@@ -9,7 +9,7 @@ def _f(v):
 def vehicle_stats(vehicle_id):
  vehicle=(rows('SELECT * FROM vehicles WHERE id=?',(vehicle_id,)) or [None])[0]
  if not vehicle:return None
- refuels=rows('SELECT * FROM refuels WHERE vehicle_id=? AND COALESCE(tank_type,1)<>0 ORDER BY refueled_at,id',(vehicle_id,))
+ refuels=rows('SELECT * FROM refuels WHERE vehicle_id=? AND COALESCE(tank_type,1)<>0 ORDER BY datetime(refueled_at),id',(vehicle_id,))
  empty={'vehicle':vehicle,'count':0,'liters':0,'fuel_cost':0,'avg_price':None,'first_odo':None,'last_odo':None,'distance':0,'avg_consumption':None,'avg_consumption_12m':None,'min_consumption':None,'max_consumption':None,'cost_per_100':None,'series':[],'fuel_breakdown':[],'monthly':[],'recent':[]}
  if not refuels:return empty
  liters=sum(_f(r.get('liters')) or 0 for r in refuels);cost=sum(_f(r.get('total_cost') or r.get('total')) or 0 for r in refuels)
@@ -30,4 +30,4 @@ def vehicle_stats(vehicle_id):
    if odo is not None and prev is not None and odo>=prev:monthly[m]['distance']+=odo-prev
   if odo is not None:prev=odo
  breakdown=rows('SELECT COALESCE(spritmonitor_fuel_code,0) code,COUNT(*) count,SUM(liters) liters,SUM(COALESCE(total_cost,total,0)) cost FROM refuels WHERE vehicle_id=? GROUP BY COALESCE(spritmonitor_fuel_code,0) ORDER BY count DESC',(vehicle_id,))
- return {'vehicle':vehicle,'count':len(refuels),'liters':liters,'fuel_cost':cost,'avg_price':sum(prices)/len(prices) if prices else None,'first_odo':first,'last_odo':last,'distance':distance,'avg_consumption':avg_cons,'avg_consumption_12m':sum(cons12)/len(cons12) if cons12 else None,'min_consumption':min(cons) if cons else None,'max_consumption':max(cons) if cons else None,'cost_per_100':cost/distance*100 if distance else None,'series':series,'fuel_breakdown':breakdown,'monthly':[{'month':k,**v} for k,v in sorted(monthly.items())],'recent':list(reversed(refuels[-12:]))}
+ return {'vehicle':vehicle,'count':len(refuels),'liters':liters,'fuel_cost':cost,'avg_price':sum(prices)/len(prices) if prices else None,'first_odo':first,'last_odo':last,'distance':distance,'avg_consumption':avg_cons,'avg_consumption_12m':sum(cons12)/len(cons12) if cons12 else None,'min_consumption':min(cons) if cons else None,'max_consumption':max(cons) if cons else None,'cost_per_100':cost/distance*100 if distance else None,'series':series,'fuel_breakdown':breakdown,'monthly':[{'month':k,**v} for k,v in sorted(monthly.items())],'recent':rows('SELECT * FROM refuels WHERE vehicle_id=? ORDER BY datetime(refueled_at) DESC,id DESC LIMIT 12',(vehicle_id,))}

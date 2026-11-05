@@ -50,3 +50,8 @@ First public release. Functionally based on the previously tested stable baselin
 
 ## [0.5.6]
 - Added Spritmonitor synchronization diagnostics and conflict handling.
+
+### Deployment packaging correction
+- `.env.example` now includes `SPRITMONITOR_AUTO_SYNC` and `SPRITMONITOR_AUTO_SYNC_SECONDS` explicitly.
+- `docker-compose.yml` contains placeholders/defaults for all runtime integrations, including Spritmonitor auto-sync.
+- `.env` is optional; Portainer users can configure values directly in the compose/stack environment.

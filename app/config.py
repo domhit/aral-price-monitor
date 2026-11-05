@@ -10,7 +10,7 @@ MQTT_PASSWORD=os.getenv('MQTT_PASSWORD','')
 MQTT_DISCOVERY_PREFIX=os.getenv('MQTT_DISCOVERY_PREFIX','homeassistant').strip('/')
 MQTT_BASE_TOPIC=os.getenv('MQTT_BASE_TOPIC','aral_price_monitor').strip('/')
 ANALYSIS_DAYS=max(7,min(90,int(os.getenv('ANALYSIS_DAYS','30'))))
-VERSION='0.9.3'
+VERSION='0.9.4'
 
 SPRITMONITOR_ENABLED=os.getenv("SPRITMONITOR_ENABLED","false").lower() in {"1","true","yes","on"}
 SPRITMONITOR_APP_TOKEN=os.getenv("SPRITMONITOR_APP_TOKEN","")
@@ -28,3 +28,6 @@ OSRM_CACHE_HOURS=max(1,int(os.getenv("OSRM_CACHE_HOURS","24")))
 OSRM_ROUTE_CANDIDATES=max(1,min(10,int(os.getenv("OSRM_ROUTE_CANDIDATES","5"))))
 
 TANK_ASSISTANT_MAX_PRICE_AGE_MIN=max(5,int(os.getenv("TANK_ASSISTANT_MAX_PRICE_AGE_MIN","60")))
+
+SPRITMONITOR_AUTO_SYNC=os.getenv("SPRITMONITOR_AUTO_SYNC","true").lower() in {"1","true","yes","on"}
+SPRITMONITOR_AUTO_SYNC_SECONDS=max(3600,int(os.getenv("SPRITMONITOR_AUTO_SYNC_SECONDS","86400")))

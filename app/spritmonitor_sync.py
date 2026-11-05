@@ -29,11 +29,22 @@ def check_response(body):
  if not isinstance(body,dict):raise ValueError('Ungültige Spritmonitor-Antwort')
  if int(body.get('errors',0) or 0)>0:raise ValueError(json.dumps(body.get('errormessages') or body,ensure_ascii=False))
  return str(pick(body,'id','fueling_id','fuelingId') or pick(body.get('data',{}) if isinstance(body.get('data'),dict) else {},'id','fueling_id') or '') or None
+def normalize_date(value):
+ raw=str(value or '').strip()
+ if not raw:return ''
+ raw=raw.replace(' ','T')
+ for fmt in ('%d.%m.%Y','%d.%m.%YT%H:%M','%Y-%m-%d','%Y-%m-%dT%H:%M','%Y-%m-%dT%H:%M:%S'):
+  try:
+   d=datetime.strptime(raw[:19],fmt)
+   return d.strftime('%Y-%m-%dT%H:%M') if ('H' in fmt) else d.strftime('%Y-%m-%dT00:00')
+  except ValueError:pass
+ try:return datetime.fromisoformat(raw.replace('Z','+00:00')).strftime('%Y-%m-%dT%H:%M')
+ except ValueError:return raw[:16]
 def normalize(f):
  liters=num(pick(f,'quantity','liters','amount'));total=num(pick(f,'cost','costs','total_cost','total'));price=num(pick(f,'price','price_per_unit','unitprice'))
  if price is None and total is not None and liters:price=total/liters
  if total is None and price is not None and liters:total=price*liters
- return {'external_id':str(pick(f,'id','fueling_id','fuelingId') or '') or None,'refueled_at':str(pick(f,'date','datetime','timestamp') or '')[:16].replace(' ','T'),'odometer':num(pick(f,'odometer','mileage','km')),'liters':liters,'total_cost':total,'price_per_liter':price,'tank_type':pick(f,'type','tank_type','fueling_type'),'spritmonitor_fuel_code':pick(f,'fuelsortid','fuel','fuel_id','fuelType'),'station_brand':str(pick(f,'stationname','station','station_name','brand') or ''),'location':str(pick(f,'location','place','city') or '')}
+ return {'external_id':str(pick(f,'id','fueling_id','fuelingId') or '') or None,'refueled_at':normalize_date(pick(f,'date','datetime','timestamp')),'odometer':num(pick(f,'odometer','mileage','km')),'liters':liters,'total_cost':total,'price_per_liter':price,'tank_type':pick(f,'type','tank_type','fueling_type'),'spritmonitor_fuel_code':pick(f,'fuelsortid','fuel','fuel_id','fuelType'),'station_brand':str(pick(f,'stationname','station','station_name','brand') or ''),'location':str(pick(f,'location','place','city') or '')}
 def fp(vid,date,odo,liters,total):return hashlib.sha256(f'{vid}|{str(date or "")[:10]}|{odo}|{round(float(liters or 0),2)}|{round(float(total or 0),2)}'.encode()).hexdigest()
 async def get_json(c,path,params=None):
  r=await c.get(BASE+path,headers=headers(),params=params,timeout=30);r.raise_for_status();return r.json()

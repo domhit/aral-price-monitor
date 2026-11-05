@@ -7,15 +7,16 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from .config import VERSION,POLL_INTERVAL
 from .db import init_db,rows,connect
-from .collector import collector_loop,collect_once,tankerkoenig_loop
+from .collector import collector_loop,collect_once,tankerkoenig_loop,spritmonitor_loop
 from .analytics import history_payload,all_recommendations,recommendation_for_fuel
-stop=asyncio.Event();task=None;tk_task=None
+stop=asyncio.Event();task=None;tk_task=None;sm_task=None
 @asynccontextmanager
 async def lifespan(app):
- global task,tk_task
- init_db();stop.clear();task=asyncio.create_task(collector_loop(stop));tk_task=asyncio.create_task(tankerkoenig_loop(stop));yield;stop.set()
+ global task,tk_task,sm_task
+ init_db();stop.clear();task=asyncio.create_task(collector_loop(stop));tk_task=asyncio.create_task(tankerkoenig_loop(stop));sm_task=asyncio.create_task(spritmonitor_loop(stop));yield;stop.set()
  if task:await task
  if tk_task:await tk_task
+ if sm_task:await sm_task
 app=FastAPI(title="Aral Price Monitor",version=VERSION,lifespan=lifespan);app.mount("/static",StaticFiles(directory="app/static"),name="static");tpl=Jinja2Templates(directory="app/templates")
 def common():return {"version":VERSION}
 @app.get("/",response_class=HTMLResponse)
@@ -129,9 +130,9 @@ def settings_page(request:Request):
     return tpl.TemplateResponse('settings.html',{'request':request,'settings':settings,'stats':stats,'last':last,**common()})
 
 @app.post('/settings')
-def settings_save(analysis_days:int=Form(...),now_threshold_ct:float=Form(...),okay_threshold_ct:float=Form(...),wait_threshold_ct:float=Form(...),min_days:int=Form(...),collector_interval_seconds:int=Form(300),tankerkoenig_interval_seconds:int=Form(600),max_price_age_min:int=Form(60),osrm_cache_hours:int=Form(24),osrm_route_candidates:int=Form(5),top5_chart_days:int=Form(30)):
+def settings_save(analysis_days:int=Form(...),now_threshold_ct:float=Form(...),okay_threshold_ct:float=Form(...),wait_threshold_ct:float=Form(...),min_days:int=Form(...),collector_interval_seconds:int=Form(300),tankerkoenig_interval_seconds:int=Form(600),max_price_age_min:int=Form(60),osrm_cache_hours:int=Form(24),osrm_route_candidates:int=Form(10),top5_chart_days:int=Form(30),spritmonitor_auto_sync:str=Form('0'),spritmonitor_sync_interval_minutes:int=Form(1440)):
     from .admin import save_settings
-    save_settings({'analysis_days':max(7,min(90,analysis_days)),'now_threshold_ct':now_threshold_ct,'okay_threshold_ct':okay_threshold_ct,'wait_threshold_ct':wait_threshold_ct,'min_days':max(1,min(30,min_days)),'collector_interval_seconds':max(60,collector_interval_seconds),'tankerkoenig_interval_seconds':max(300,tankerkoenig_interval_seconds),'max_price_age_min':max(5,max_price_age_min),'osrm_cache_hours':max(1,osrm_cache_hours),'osrm_route_candidates':max(1,min(10,osrm_route_candidates)),'top5_chart_days':max(7,min(90,top5_chart_days))});return RedirectResponse('/settings?saved=1',303)
+    save_settings({'analysis_days':max(7,min(90,analysis_days)),'now_threshold_ct':now_threshold_ct,'okay_threshold_ct':okay_threshold_ct,'wait_threshold_ct':wait_threshold_ct,'min_days':max(1,min(30,min_days)),'collector_interval_seconds':max(60,collector_interval_seconds),'tankerkoenig_interval_seconds':max(300,tankerkoenig_interval_seconds),'max_price_age_min':max(5,max_price_age_min),'osrm_cache_hours':max(1,osrm_cache_hours),'osrm_route_candidates':max(1,min(10,osrm_route_candidates)),'top5_chart_days':max(7,min(90,top5_chart_days)),'spritmonitor_auto_sync':1 if spritmonitor_auto_sync=='1' else 0,'spritmonitor_sync_interval_minutes':max(60,spritmonitor_sync_interval_minutes)});return RedirectResponse('/settings?saved=1',303)
 
 @app.get('/backup/database')
 def backup_database():
@@ -159,7 +160,7 @@ def vacuum_database():
 
 @app.get('/refuels',response_class=HTMLResponse)
 def refuels_page(request:Request,edit:int|None=None):
-    vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name');history=rows("SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY r.refueled_at DESC,r.id DESC LIMIT 500");editing=(rows('SELECT * FROM refuels WHERE id=?',(edit,)) or [None])[0] if edit else None
+    vehicles=rows('SELECT * FROM vehicles ORDER BY name');stations=rows('SELECT * FROM stations WHERE active=1 ORDER BY name');history=rows("SELECT r.*,v.name vehicle_name,s.name station_name FROM refuels r JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN stations s ON s.id=r.station_id ORDER BY datetime(r.refueled_at) DESC,r.id DESC LIMIT 500");editing=(rows('SELECT * FROM refuels WHERE id=?',(edit,)) or [None])[0] if edit else None
     return tpl.TemplateResponse('refuels.html',{'request':request,'vehicles':vehicles,'stations':stations,'history':history,'editing':editing,**common()})
 
 @app.post('/refuels/save')

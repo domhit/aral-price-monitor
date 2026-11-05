@@ -3,12 +3,54 @@ services:
     image: ${IMAGE_REPOSITORY:-ghcr.io/YOUR_GITHUB_USER/aral-price-monitor}:${IMAGE_TAG:-latest}
     container_name: aral-price-monitor
     restart: unless-stopped
+
     ports:
       - "${HOST_PORT:-8095}:8000"
+
     volumes:
       - ${DATA_PATH:-./data}:/data
+
+    # Optional. If no .env file exists, comment out/remove the following two lines.
+    # All important settings also have placeholders/defaults below.
     env_file:
-      - .env
+      - path: .env
+        required: false
+
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      DATABASE_PATH: ${DATABASE_PATH:-/data/aral-price-monitor.db}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-300}
+      ANALYSIS_DAYS: ${ANALYSIS_DAYS:-30}
+      ARAL_API_URL: ${ARAL_API_URL:-https://api.tankstelle.aral.de/api/v3/stations/{station_id}/prices}
+
+      MQTT_ENABLED: ${MQTT_ENABLED:-false}
+      MQTT_HOST: ${MQTT_HOST:-YOUR_MQTT_HOST}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_USER: ${MQTT_USER:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_DISCOVERY_PREFIX: ${MQTT_DISCOVERY_PREFIX:-homeassistant}
+      MQTT_BASE_TOPIC: ${MQTT_BASE_TOPIC:-aral_price_monitor}
+
+      SPRITMONITOR_ENABLED: ${SPRITMONITOR_ENABLED:-false}
+      SPRITMONITOR_APP_TOKEN: ${SPRITMONITOR_APP_TOKEN:-YOUR_SPRITMONITOR_APP_TOKEN}
+      SPRITMONITOR_BEARER_TOKEN: ${SPRITMONITOR_BEARER_TOKEN:-YOUR_SPRITMONITOR_BEARER_TOKEN}
+      SPRITMONITOR_SYNC_MODE: ${SPRITMONITOR_SYNC_MODE:-read_only}
+      SPRITMONITOR_AUTO_SYNC: ${SPRITMONITOR_AUTO_SYNC:-true}
+      SPRITMONITOR_AUTO_SYNC_SECONDS: ${SPRITMONITOR_AUTO_SYNC_SECONDS:-86400}
+
+      TANKERKOENIG_ENABLED: ${TANKERKOENIG_ENABLED:-false}
+      TANKERKOENIG_API_KEY: ${TANKERKOENIG_API_KEY:-YOUR_TANKERKOENIG_API_KEY}
+      TANKERKOENIG_LAT: ${TANKERKOENIG_LAT:-49.000000}
+      TANKERKOENIG_LNG: ${TANKERKOENIG_LNG:-7.000000}
+      TANKERKOENIG_RADIUS: ${TANKERKOENIG_RADIUS:-10}
+      TANKERKOENIG_INTERVAL_SECONDS: ${TANKERKOENIG_INTERVAL_SECONDS:-600}
+
+      OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
+      OSRM_CACHE_HOURS: ${OSRM_CACHE_HOURS:-24}
+      OSRM_ROUTE_CANDIDATES: ${OSRM_ROUTE_CANDIDATES:-10}
+
+      TANK_ASSISTANT_MAX_PRICE_AGE_MIN: ${TANK_ASSISTANT_MAX_PRICE_AGE_MIN:-60}
+
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
       interval: 30s

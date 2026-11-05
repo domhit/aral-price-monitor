@@ -64,3 +64,22 @@ async def tankerkoenig_loop(stop):
   except Exception as e:print('Tankerkönig Collector:',e,flush=True)
   try:await asyncio.wait_for(stop.wait(),timeout=600)
   except asyncio.TimeoutError:pass
+
+async def spritmonitor_loop(stop):
+ from . import config
+ # Let startup migrations and collectors settle before the first automatic read sync.
+ try:await asyncio.wait_for(stop.wait(),timeout=60)
+ except asyncio.TimeoutError:pass
+ while not stop.is_set():
+  try:
+   from .db import rows
+   cfg={x['key']:x['value'] for x in rows('SELECT key,value FROM settings')}
+   enabled=config.SPRITMONITOR_ENABLED and config.SPRITMONITOR_AUTO_SYNC and str(cfg.get('spritmonitor_auto_sync','1')).lower() in ('1','true','yes','on')
+   minutes=max(60,int(cfg.get('spritmonitor_sync_interval_minutes',1440)))
+   if enabled:
+    from .spritmonitor_sync import sync
+    result=await sync('read_only')
+    print('Spritmonitor Auto-Sync:',result,flush=True)
+  except Exception as e:print('Spritmonitor Auto-Sync:',e,flush=True)
+  try:await asyncio.wait_for(stop.wait(),timeout=max(3600,minutes*60))
+  except asyncio.TimeoutError:pass

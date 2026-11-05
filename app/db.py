@@ -32,6 +32,7 @@ def init_db():
  migrate_v070()
  migrate_v073()
  migrate_v0921()
+ migrate_v094()
 def seed(c):
  fuels=[("F00125","Aral Ultimate 102","ultimate_102"),("F00114","Aral SuperPlus","superplus_98"),("F00400","Aral Diesel","diesel"),("F00426","Aral Ultimate Diesel","ultimate_diesel"),("F00104","Aral Super E5","super_e5"),("F00113","Aral Super 95 E10","super_e10")]
  c.executemany("INSERT OR IGNORE INTO fuels(aral_fuel_id,name,slug) VALUES(?,?,?)",fuels)
@@ -132,3 +133,16 @@ def migrate_v0921():
     with connect() as c:
         defaults={'collector_interval_seconds':'300','tankerkoenig_interval_seconds':'600','max_price_age_min':'60','osrm_cache_hours':'24','osrm_route_candidates':'10','top5_chart_days':'30'}
         for k,v in defaults.items():c.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)',(k,v))
+
+
+def migrate_v094():
+    with connect() as c:
+        defaults={'spritmonitor_auto_sync':'1','spritmonitor_sync_interval_minutes':'1440'}
+        for k,v in defaults.items():c.execute('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)',(k,v))
+        # Older imports could retain Spritmonitor's DD.MM.YYYY date format. SQLite sorts
+        # that lexically, hiding new entries from recent lists and charts. Convert in place.
+        c.execute("""UPDATE refuels SET refueled_at =
+            substr(refueled_at,7,4)||'-'||substr(refueled_at,4,2)||'-'||substr(refueled_at,1,2)||
+            CASE WHEN length(refueled_at)>=16 THEN 'T'||substr(refueled_at,12,5) ELSE 'T00:00' END
+            WHERE refueled_at GLOB '[0-9][0-9].[0-9][0-9].[0-9][0-9][0-9][0-9]*'""")
+        c.execute('CREATE INDEX IF NOT EXISTS idx_refuels_vehicle_date ON refuels(vehicle_id,refueled_at DESC,id DESC)')
